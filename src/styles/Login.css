@@ -1,0 +1,53 @@
+:root {
+  --green: hsl(124, 84%, 26%);
+  --brown: hsl(25, 50%, 30%);
+  --white: #ffffff;
+}
+
+.login-container {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100vh;
+  background: var(--white);
+}
+
+.login-card {
+  background: var(--white);
+  padding: 32px;
+  border-radius: 10px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+  width: 350px;
+  text-align: center;
+}
+
+.login-title {
+  margin-bottom: 20px;
+  color: var(--brown);
+}
+
+.login-form {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+}
+
+.login-form input {
+  padding: 10px;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+}
+
+.btn.primary {
+  background: var(--green);
+  color: var(--white);
+  font-weight: bold;
+  cursor: pointer;
+  border: none;
+  padding: 10px;
+  border-radius: 6px;
+}
+
+.btn.primary:hover {
+  background: hsl(124, 84%, 20%); /* darker green */
+}
