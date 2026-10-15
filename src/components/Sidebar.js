@@ -18,9 +18,9 @@ function Sidebar() {
   const { user, logout } = useContext(AuthContext);
   const link = DASHBOARD_LINKS[user?.role];
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
     if (window.confirm("Are you sure you want to logout?")) {
-      logout();
+      await logout();
       sessionStorage.clear();
       navigate("/login");
     }

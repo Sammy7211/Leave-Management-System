@@ -8,7 +8,7 @@ function LoginPage() {
   const [credentials, setCredentials] = useState({ email: '', password: '' });
   const [error, setError] = useState('');
   const navigate = useNavigate();
-  const { login } = useContext(AuthContext);
+  const { login, error: serverError } = useContext(AuthContext);
 
   const handleChange = (e) => {
     setCredentials({ ...credentials, [e.target.name]: e.target.value });
@@ -62,7 +62,7 @@ function LoginPage() {
             onChange={handleChange}
             required
           />
-          {error && <p className="error-text">{error}</p>}
+          {(error || serverError) && <p className="error-text">{error || serverError}</p>}
           <button type="submit" className="btn primary">Login</button>
         </form>
       </div>

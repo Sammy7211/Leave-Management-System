@@ -4,7 +4,12 @@ import { Navigate } from 'react-router-dom';
 import { AuthContext } from '../context/AuthContext';
 
 function ProtectedRoute({ children, requiredRole }) {
-  const { user } = useContext(AuthContext);
+  const { user, loading } = useContext(AuthContext);
+
+  // Wait for the server to say who's logged in before deciding
+  if (loading) {
+    return <p className="page-loading">Loading…</p>;
+  }
 
   if (!user) {
     return <Navigate to="/login" replace />;

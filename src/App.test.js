@@ -3,6 +3,13 @@ import userEvent from '@testing-library/user-event';
 import App from './App';
 import { AuthProvider } from './context/AuthContext';
 import { RequestsProvider } from './context/RequestsContext';
+import * as authService from './services/authService';
+
+// No real server in these tests: the auth calls are faked
+jest.mock('./services/authService');
+
+const JANE = { id: 3, staffNo: 'EMP003', name: 'Jane Employee', role: 'employee' };
+const ALICE = { id: 1, staffNo: 'EMP001', name: 'Alice', role: 'manager' };
 
 function renderApp(path = '/') {
   window.history.pushState({}, '', path);
@@ -15,57 +22,80 @@ function renderApp(path = '/') {
   );
 }
 
-beforeEach(() => localStorage.clear());
+const loggedInAs = (user) => authService.getCurrentUser.mockResolvedValue(user);
 
-test('shows the login page when not logged in', () => {
-  renderApp('/employee');
-  expect(screen.getByText(/LeaveSys™ Login/)).toBeInTheDocument();
+beforeEach(() => {
+  localStorage.clear();
+  authService.getCurrentUser.mockResolvedValue(null);
 });
 
-test('employee only sees their own leave requests', () => {
-  localStorage.setItem('authToken', 'mockToken');
-  localStorage.setItem('user', JSON.stringify({ id: 'EMP003', name: 'Jane Employee', role: 'employee' }));
+test('shows the login page when not logged in', async () => {
+  renderApp('/employee');
+  expect(await screen.findByText(/LeaveSys™ Login/)).toBeInTheDocument();
+});
+
+test('logging in sends the user to their dashboard', async () => {
+  authService.login.mockResolvedValue(JANE);
+  renderApp('/login');
+
+  userEvent.type(await screen.findByPlaceholderText('Email'), 'employee@example.com');
+  userEvent.type(screen.getByPlaceholderText('Password'), 'secret-password');
+  userEvent.click(screen.getByRole('button', { name: 'Login' }));
+
+  expect(await screen.findByText('Employee Dashboard')).toBeInTheDocument();
+  expect(authService.login).toHaveBeenCalledWith('employee@example.com', 'secret-password');
+});
+
+test('a failed login shows the server\'s error', async () => {
+  authService.login.mockRejectedValue(new Error('Invalid email or password.'));
+  renderApp('/login');
+
+  userEvent.type(await screen.findByPlaceholderText('Email'), 'employee@example.com');
+  userEvent.type(screen.getByPlaceholderText('Password'), 'wrong');
+  userEvent.click(screen.getByRole('button', { name: 'Login' }));
+
+  expect(await screen.findByText('Invalid email or password.')).toBeInTheDocument();
+});
+
+test('employee only sees their own leave requests', async () => {
+  loggedInAs(JANE);
   localStorage.setItem('requests', JSON.stringify([
-    { id: 1, employeeId: 'EMP003', employee: 'Jane Employee', role: 'Employee', type: 'Annual Leave', reason: 'Mine', status: 'Pending Manager Approval' },
-    { id: 2, employeeId: 'EMP999', employee: 'Someone Else', role: 'Employee', type: 'Sick Leave', reason: 'Not mine', status: 'Approved (Final)' },
+    { id: 1, employeeId: 3, employee: 'Jane Employee', role: 'Employee', type: 'Annual Leave', reason: 'Mine', status: 'Pending Manager Approval' },
+    { id: 2, employeeId: 99, employee: 'Someone Else', role: 'Employee', type: 'Sick Leave', reason: 'Not mine', status: 'Approved (Final)' },
   ]));
 
   renderApp('/employee');
 
-  expect(screen.getByText('Mine')).toBeInTheDocument();
+  expect(await screen.findByText('Mine')).toBeInTheDocument();
   expect(screen.queryByText('Not mine')).not.toBeInTheDocument();
 });
 
-test('employee cannot open another role\'s dashboard', () => {
-  localStorage.setItem('authToken', 'mockToken');
-  localStorage.setItem('user', JSON.stringify({ id: 'EMP003', name: 'Jane Employee', role: 'employee' }));
-
+test('employee cannot open another role\'s dashboard', async () => {
+  loggedInAs(JANE);
   renderApp('/admin');
-  expect(screen.getByText(/LeaveSys™ Login/)).toBeInTheDocument();
+  expect(await screen.findByText(/LeaveSys™ Login/)).toBeInTheDocument();
 });
 
-test('manager can review HR leave requests', () => {
-  localStorage.setItem('authToken', 'mockToken');
-  localStorage.setItem('user', JSON.stringify({ id: 'EMP001', name: 'Alice', role: 'manager' }));
+test('manager can review HR leave requests', async () => {
+  loggedInAs(ALICE);
   localStorage.setItem('requests', JSON.stringify([
-    { id: 1, employeeId: 'EMP002', employee: 'Bob', role: 'HR', type: 'Annual Leave', reason: 'HR trip', status: 'Pending Manager Approval' },
+    { id: 1, employeeId: 2, employee: 'Bob', role: 'HR', type: 'Annual Leave', reason: 'HR trip', status: 'Pending Manager Approval' },
   ]));
 
   renderApp('/manager');
 
-  expect(screen.getByText('HR trip')).toBeInTheDocument();
+  expect(await screen.findByText('HR trip')).toBeInTheDocument();
   expect(screen.getByRole('button', { name: 'Review' })).toBeInTheDocument();
 });
 
-test('rejecting a request requires a reason, which is saved to its history', () => {
-  localStorage.setItem('authToken', 'mockToken');
-  localStorage.setItem('user', JSON.stringify({ id: 'EMP001', name: 'Alice', role: 'manager' }));
+test('rejecting a request requires a reason, which is saved to its history', async () => {
+  loggedInAs(ALICE);
   localStorage.setItem('requests', JSON.stringify([
-    { id: 1, employeeId: 'EMP003', employee: 'Jane Employee', role: 'Employee', type: 'Annual Leave', from: '2099-01-05', to: '2099-01-06', days: 2, reason: 'Trip', status: 'Pending Manager Approval', history: [] },
+    { id: 1, employeeId: 3, employee: 'Jane Employee', role: 'Employee', type: 'Annual Leave', from: '2099-01-05', to: '2099-01-06', days: 2, reason: 'Trip', status: 'Pending Manager Approval', history: [] },
   ]));
 
   renderApp('/manager');
-  userEvent.click(screen.getByRole('button', { name: 'Review' }));
+  userEvent.click(await screen.findByRole('button', { name: 'Review' }));
   userEvent.click(screen.getByRole('button', { name: 'Reject' }));
   expect(screen.getByRole('alert')).toHaveTextContent('Please give a reason');
 
@@ -77,11 +107,9 @@ test('rejecting a request requires a reason, which is saved to its history', () 
   expect(saved.history.at(-1)).toMatchObject({ by: 'Alice', comment: 'Team is short-staffed that week' });
 });
 
-test('sidebar only links to the user\'s own dashboard', () => {
-  localStorage.setItem('authToken', 'mockToken');
-  localStorage.setItem('user', JSON.stringify({ id: 'EMP003', name: 'Jane Employee', role: 'employee' }));
-
+test('sidebar only links to the user\'s own dashboard', async () => {
+  loggedInAs(JANE);
   renderApp('/employee');
-  expect(screen.getByRole('link', { name: 'My Dashboard' })).toBeInTheDocument();
+  expect(await screen.findByRole('link', { name: 'My Dashboard' })).toBeInTheDocument();
   expect(screen.queryByRole('link', { name: /Admin/ })).not.toBeInTheDocument();
 });
