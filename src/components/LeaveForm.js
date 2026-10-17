@@ -2,10 +2,12 @@
 import React, { useState, useContext } from 'react';
 import { RequestsContext } from '../context/RequestsContext';
 import { AuthContext } from '../context/AuthContext';
-import { LEAVE_TYPES, countLeaveDays, getBalances, todayISO, validateLeaveRequest } from '../services/leaveService';
+import { LEAVE_TYPES, countLeaveDays, getBalances, todayISO, validateLeaveRequest } from '../shared/leaveRules.js';
 import '../styles/Modal.css';
 
-function LeaveForm({ role = 'Employee', onSubmit, onClose }) { // ✅ add onClose prop
+// The server works out the days, the starting status and who reviews it from the
+// logged-in user, and re-checks every rule; the checks here just give instant feedback.
+function LeaveForm({ onSubmit, onClose }) {
   const { requests, addRequest } = useContext(RequestsContext);
   const { user } = useContext(AuthContext);
   const [formData, setFormData] = useState({
@@ -15,6 +17,8 @@ function LeaveForm({ role = 'Employee', onSubmit, onClose }) { // ✅ add onClos
     reason: '',
     attachment: null,
   });
+  const [submitting, setSubmitting] = useState(false);
+  const [serverError, setServerError] = useState('');
 
   const days = countLeaveDays(formData.type, formData.from, formData.to);
   const errors = validateLeaveRequest(formData, { requests, employeeId: user?.id });
@@ -25,25 +29,25 @@ function LeaveForm({ role = 'Employee', onSubmit, onClose }) { // ✅ add onClos
   const unit = LEAVE_TYPES[formData.type]?.unit;
   const attachmentLimit = LEAVE_TYPES[formData.type]?.attachmentRequiredOver;
 
-  const handleChange = (field, value) => setFormData({ ...formData, [field]: value });
+  const handleChange = (field, value) => {
+    setFormData({ ...formData, [field]: value });
+    setServerError('');
+  };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    if (errors.length) return;
+    if (errors.length || submitting) return;
 
-    // File objects can't be saved to localStorage, so keep just its details
-    const { attachment } = formData;
-    const attachmentInfo = attachment ? { name: attachment.name, size: attachment.size, type: attachment.type } : null;
-    addRequest({
-      ...formData,
-      days,
-      attachment: attachmentInfo,
-      status: role === 'Manager' ? 'Pending HR Approval' : 'Pending Manager Approval',
-      employeeId: user?.id || null,
-      employee: user?.name || 'Unknown',
-      role,
-    });
-    if (onSubmit) onSubmit(formData); // ✅ only fires on submit
+    setSubmitting(true);
+    try {
+      const { type, from, to, reason, attachment } = formData;
+      // Only the file's name is sent for now; uploading the file itself comes later
+      const created = await addRequest({ type, from, to, reason, attachment: attachment ? { name: attachment.name } : null });
+      if (onSubmit) onSubmit(created);
+    } catch (err) {
+      setServerError(err.message);
+      setSubmitting(false);
+    }
   };
 
   const handleCancel = () => {
@@ -83,14 +87,16 @@ function LeaveForm({ role = 'Employee', onSubmit, onClose }) { // ✅ add onClos
           onChange={(e) => handleChange('attachment', e.target.files[0] || null)} />
       </label>
 
-      {errors.length > 0 && (
+      {(errors.length > 0 || serverError) && (
         <ul className="form-errors" role="alert">
-          {errors.map(err => <li key={err}>{err}</li>)}
+          {(serverError ? [serverError] : errors).map(err => <li key={err}>{err}</li>)}
         </ul>
       )}
 
       <div className="modal-actions">
-        <button type="submit" className="btn primary" disabled={errors.length > 0}>Submit Request</button>
+        <button type="submit" className="btn primary" disabled={errors.length > 0 || submitting}>
+          {submitting ? 'Submitting…' : 'Submit Request'}
+        </button>
         <button type="button" className="btn danger" onClick={handleCancel}>Cancel</button>
       </div>
     </form>

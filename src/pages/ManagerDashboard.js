@@ -2,7 +2,7 @@
 import React, { useContext, useState } from 'react';
 import { RequestsContext } from '../context/RequestsContext';
 import { AuthContext } from '../context/AuthContext';
-import { isApproved, isRejected } from '../services/leaveService';
+import { isApproved, isRejected } from '../shared/leaveRules.js';
 import Sidebar from '../components/Sidebar';
 import Topbar from '../components/TopBar';
 import StatsCard from '../components/StatsCard';
@@ -16,40 +16,29 @@ import Toast from '../components/Toast';
 import '../styles/Dashboard.css';
 
 function ManagerDashboard() {
-  const { requests, updateRequestStatus } = useContext(RequestsContext);
+  const { requests, decideRequest } = useContext(RequestsContext);
   const { user } = useContext(AuthContext);
   const [selectedRequest, setSelectedRequest] = useState(null);
   const [viewingRequest, setViewingRequest] = useState(null);
   const [showForm, setShowForm] = useState(false);
   const [toastMessage, setToastMessage] = useState(null);
 
-  // ✅ Separate filters (HR staff report to the manager too)
-  const employeeRequests = requests.filter(r => (!r.role || r.role === 'Employee' || r.role === 'HR'));
-  const managerRequests = requests.filter(r => r.role === 'Manager' && r.employeeId === user?.id);
+  // The server only sends this manager's own requests and their team's
+  const employeeRequests = requests.filter(r => r.employeeId !== user?.id);
+  const managerRequests = requests.filter(r => r.employeeId === user?.id);
 
-  // ✅ Handle decisions with HR workflow in mind
-  const handleApprove = (comment) => {
-    if (selectedRequest.role === 'HR') {
-      // HR can't approve their own leave, so the manager's decision is final
-      updateRequestStatus(selectedRequest.id, 'Approved by Manager', { by: user?.name, comment });
-      setToastMessage({
-        title: 'Request Approved',
-        message: 'HR leave request has been approved.',
-        type: 'success'
-      });
-    } else {
-      updateRequestStatus(selectedRequest.id, 'Pending HR Approval', { by: user?.name, comment }); // ✅ forward to HR
-      setToastMessage({
-        title: 'Request Recommended',
-        message: 'Request sent to HR for final approval.',
-        type: 'success'
-      });
-    }
+  // The server decides the next step: HR staff requests are final here, employee requests go on to HR.
+  // If it refuses, the error is shown in the review dialog.
+  const handleApprove = async (comment) => {
+    const updated = await decideRequest(selectedRequest.id, 'approve', comment);
+    setToastMessage(updated.status === 'Pending HR Approval'
+      ? { title: 'Request Recommended', message: 'Request sent to HR for final approval.', type: 'success' }
+      : { title: 'Request Approved', message: 'HR leave request has been approved.', type: 'success' });
     setSelectedRequest(null);
   };
 
-  const handleReject = (comment) => {
-    updateRequestStatus(selectedRequest.id, 'Rejected by Manager', { by: user?.name, comment });
+  const handleReject = async (comment) => {
+    await decideRequest(selectedRequest.id, 'reject', comment);
     setToastMessage({
       title: 'Request Rejected',
       message: 'Request has been rejected by Manager.',
@@ -128,7 +117,6 @@ function ManagerDashboard() {
         {showForm && (
           <Modal onClose={() => setShowForm(false)}>
             <LeaveForm
-              role="Manager"
               onSubmit={(data) => {
                 setShowForm(false);
                 if (data) {

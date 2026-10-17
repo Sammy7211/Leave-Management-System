@@ -2,7 +2,7 @@
 import React, { useContext, useState } from 'react';
 import { RequestsContext } from '../context/RequestsContext';
 import { AuthContext } from '../context/AuthContext';
-import { isApproved, isRejected } from '../services/leaveService';
+import { isApproved, isRejected } from '../shared/leaveRules.js';
 import Sidebar from '../components/Sidebar';
 import Topbar from '../components/TopBar';
 import StatsCard from '../components/StatsCard';
@@ -16,19 +16,19 @@ import ReviewModal from '../components/ReviewModal';
 import '../styles/Dashboard.css';
 
 function HRDashboard() {
-  const { requests, updateRequestStatus } = useContext(RequestsContext);
+  const { requests, decideRequest } = useContext(RequestsContext);
   const { user } = useContext(AuthContext);
   const [selectedRequest, setSelectedRequest] = useState(null);
   const [viewingRequest, setViewingRequest] = useState(null);
   const [toastMessage, setToastMessage] = useState(null);
   const [showForm, setShowForm] = useState(false); // ✅ define showForm state
 
-  // ✅ Handle HR decision
-  const handleDecision = (decision, comment) => {
-    updateRequestStatus(selectedRequest.id, decision, { by: user?.name, comment });
+  // ✅ Handle HR decision ('approve' or 'reject'); errors are shown in the review dialog
+  const handleDecision = async (decision, comment) => {
+    const updated = await decideRequest(selectedRequest.id, decision, comment);
     setToastMessage({
-      text: `Request ${decision}`,
-      type: isApproved(decision) ? 'success' : 'danger'
+      text: `Request ${updated.status}`,
+      type: isApproved(updated.status) ? 'success' : 'danger'
     });
     setSelectedRequest(null);
   };
@@ -103,7 +103,6 @@ function HRDashboard() {
         {showForm && (
           <Modal onClose={() => setShowForm(false)}>
             <LeaveForm
-              role="HR"
               onSubmit={(data) => {
                 setShowForm(false);
                 if (data) {
@@ -133,8 +132,8 @@ function HRDashboard() {
         {selectedRequest && (
           <ReviewModal
             request={selectedRequest}
-            onApprove={(comment) => handleDecision('Approved (Final)', comment)}
-            onReject={(comment) => handleDecision('Rejected (Final)', comment)}
+            onApprove={(comment) => handleDecision('approve', comment)}
+            onReject={(comment) => handleDecision('reject', comment)}
             onClose={() => setSelectedRequest(null)}
           />
         )}

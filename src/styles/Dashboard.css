@@ -120,3 +120,15 @@ body.dark {
 .btn.secondary:hover {
   background: hsl(124, 60%, 94%);
 }
+
+.load-error {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 12px;
+  padding: 10px 12px;
+  background: #fdecea;
+  border: 1px solid #f5c2bd;
+  border-radius: 6px;
+  color: #a12a1d;
+}

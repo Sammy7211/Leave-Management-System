@@ -1,7 +1,7 @@
 import React, { useState, useContext } from 'react';
 import { RequestsContext } from '../context/RequestsContext';
 import { AuthContext } from '../context/AuthContext';
-import { isApproved, isPending, isRejected } from '../services/leaveService';
+import { isApproved, isPending, isRejected } from '../shared/leaveRules.js';
 import Sidebar from '../components/Sidebar';
 import Topbar from '../components/TopBar';
 import StatsCard from '../components/StatsCard';
@@ -68,7 +68,6 @@ function EmployeeDashboard() {
         {showForm && (
   <Modal onClose={() => setShowForm(false)}>
     <LeaveForm
-      role="Employee"
       onSubmit={() => {
         setShowForm(false);
         setToastMessage({ text: 'Leave request submitted successfully', type: 'success' });

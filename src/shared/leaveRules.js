@@ -1,5 +1,7 @@
-// src/services/leaveService.js
-// Leave rules: types, entitlements, working-day counting, balances and validation.
+// src/shared/leaveRules.js
+// Leave rules shared by the React app and the Node server: types, entitlements,
+// working-day counting, balances and validation. Keep this file free of imports
+// so it runs unchanged in both places.
 
 // Entitlements per calendar year. These are starting values based on the
 // Employment Act minimums; confirm them against KALRO's HR policy.

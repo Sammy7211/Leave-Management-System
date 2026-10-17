@@ -2,7 +2,7 @@
 import React, { useContext } from 'react';
 import { RequestsContext } from '../context/RequestsContext';
 import { AuthContext } from '../context/AuthContext';
-import { getBalances } from '../services/leaveService';
+import { getBalances } from '../shared/leaveRules.js';
 import DataTable from './DataTable';
 
 // The logged-in user's leave balances for the current year

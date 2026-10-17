@@ -7,15 +7,15 @@ import DataTable from '../components/DataTable';
 import Modal from '../components/Modal';
 import Toast from '../components/Toast';
 import ReviewModal from '../components/ReviewModal';
+import RequestDetails from '../components/RequestDetails';
 import { RequestsContext } from '../context/RequestsContext';
-import { AuthContext } from '../context/AuthContext';
-import { LEAVE_TYPES, getBalances, isApproved, isRejected } from '../services/leaveService';
+import { LEAVE_TYPES, getBalances, isApproved, isPending, isRejected } from '../shared/leaveRules.js';
 import '../styles/Dashboard.css';
 
 function AdminDashboard() {
-  const { requests, updateRequestStatus } = useContext(RequestsContext);
-  const { user } = useContext(AuthContext);
+  const { requests, decideRequest } = useContext(RequestsContext);
   const [selectedRequest, setSelectedRequest] = useState(null);
+  const [viewingRequest, setViewingRequest] = useState(null);
   const [showEmployeeForm, setShowEmployeeForm] = useState(false);
   const [employees, setEmployees] = useState([
     { id: 'EMP001', name: 'Alice', role: 'Manager' },
@@ -31,14 +31,15 @@ function AdminDashboard() {
   };
 
   // ✅ Handle request actions
-  const handleApprove = (comment) => {
-    updateRequestStatus(selectedRequest.id, 'Approved (Final)', { by: `${user?.name} (Admin)`, comment });
+  // Admins make the final decision on pending requests; errors are shown in the review dialog
+  const handleApprove = async (comment) => {
+    await decideRequest(selectedRequest.id, 'approve', comment);
     setToastMessage({ text: 'Request approved successfully', type: 'success' });
     setSelectedRequest(null);
   };
 
-  const handleReject = (comment) => {
-    updateRequestStatus(selectedRequest.id, 'Rejected (Final)', { by: `${user?.name} (Admin)`, comment });
+  const handleReject = async (comment) => {
+    await decideRequest(selectedRequest.id, 'reject', comment);
     setToastMessage({ text: 'Request rejected successfully', type: 'danger' });
     setSelectedRequest(null);
   };
@@ -58,11 +59,7 @@ function AdminDashboard() {
       ...Object.keys(LEAVE_TYPES).map(type => `${type} Remaining`)
     ];
     const rows = requests.map(r => {
-    const emp = employees.find(e => e.id === r.employeeId) || {
-      id: r.employeeId || "N/A",
-      name: r.employee || "Unknown",
-      role: r.role || "Employee"
-    };
+    const emp = { id: r.staffNo || "N/A", name: r.employee || "Unknown", role: r.role || "Employee" };
     const year = Number(r.from?.slice(0, 4)) || new Date().getFullYear();
     const balances = getBalances(requests, r.employeeId, year);
 
@@ -130,9 +127,18 @@ function AdminDashboard() {
             r.days,
             r.reason,
             r.status,
-            <button className="btn primary" onClick={() => setSelectedRequest(r)}>Review</button>
+            isPending(r.status)
+              ? <button className="btn primary" onClick={() => setSelectedRequest(r)}>Review</button>
+              : <button className="btn secondary" onClick={() => setViewingRequest(r)}>Details</button>
           ])}
         />
+
+        {viewingRequest && (
+          <Modal onClose={() => setViewingRequest(null)}>
+            <h3>Request Details</h3>
+            <RequestDetails request={viewingRequest} />
+          </Modal>
+        )}
 
         {selectedRequest && (
           <ReviewModal

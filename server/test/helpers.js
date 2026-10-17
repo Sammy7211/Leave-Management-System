@@ -12,7 +12,7 @@ if (!/test/i.test(process.env.DATABASE_URL || '')) {
 }
 
 export async function resetDb() {
-  await pool.query('TRUNCATE users, sessions RESTART IDENTITY CASCADE');
+  await pool.query('TRUNCATE users, sessions, leave_requests, leave_request_history RESTART IDENTITY CASCADE');
 }
 
 let counter = 0;

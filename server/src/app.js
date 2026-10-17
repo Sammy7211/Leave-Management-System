@@ -5,6 +5,7 @@ import helmet from 'helmet';
 import cookieParser from 'cookie-parser';
 import { authenticate } from './middleware/auth.js';
 import authRoutes from './routes/auth.js';
+import requestRoutes from './routes/requests.js';
 
 const app = express();
 
@@ -15,6 +16,7 @@ app.use(authenticate);
 
 app.get('/api/health', (req, res) => res.json({ ok: true }));
 app.use('/api/auth', authRoutes);
+app.use('/api/requests', requestRoutes);
 
 app.use('/api', (req, res) => res.status(404).json({ error: 'Not found.' }));
 

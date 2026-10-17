@@ -1,4 +1,4 @@
-import { countLeaveDays, getBalances, getPublicHolidays, validateLeaveRequest } from './leaveService';
+import { countLeaveDays, getBalances, getPublicHolidays, validateLeaveRequest } from './leaveRules.js';
 
 describe('public holidays', () => {
   test('includes Good Friday and Easter Monday', () => {

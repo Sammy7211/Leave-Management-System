@@ -11,6 +11,10 @@ function required(name) {
 
 const env = process.env.NODE_ENV || 'development';
 
+// "Today" for leave rules (e.g. no leave starting in the past) is Kenyan time,
+// even if the server runs elsewhere, such as a cloud host set to UTC
+process.env.TZ ||= 'Africa/Nairobi';
+
 const config = {
   env,
   isProduction: env === 'production',
