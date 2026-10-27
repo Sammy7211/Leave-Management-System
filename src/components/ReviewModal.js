@@ -1,6 +1,7 @@
 // src/components/ReviewModal.js
 import React, { useContext, useState } from 'react';
 import { RequestsContext } from '../context/RequestsContext';
+import { usePolicy } from '../context/PolicyContext';
 import { getBalances } from '../shared/leaveRules.js';
 import Modal from './Modal';
 import RequestDetails from './RequestDetails';
@@ -11,12 +12,13 @@ import '../styles/Modal.css';
 // onApprove/onReject return promises; if the server refuses, its message is shown here.
 function ReviewModal({ request, approveLabel = 'Approve', onApprove, onReject, onClose }) {
   const { requests } = useContext(RequestsContext);
+  const { policy } = usePolicy();
   const [comment, setComment] = useState('');
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
 
   const year = Number(request.from?.slice(0, 4)) || new Date().getFullYear();
-  const balance = getBalances(requests, request.employeeId, year).find(b => b.type === request.type);
+  const balance = getBalances(requests, request.employeeId, year, policy).find(b => b.type === request.type);
 
   const submit = async (action) => {
     setSaving(true);

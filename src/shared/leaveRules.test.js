@@ -1,38 +1,69 @@
-import { countLeaveDays, getBalances, getPublicHolidays, validateLeaveRequest } from './leaveRules.js';
+import { countLeaveDays, fixedHolidays, getBalances, getPublicHolidays, validateLeaveRequest } from './leaveRules.js';
+
+const POLICY = {
+  leaveTypes: [
+    { name: 'Annual Leave', entitlement: 21, unit: 'working', attachmentRequiredOver: null, active: true },
+    { name: 'Sick Leave', entitlement: 14, unit: 'working', attachmentRequiredOver: 2, active: true },
+    { name: 'Maternity Leave', entitlement: 90, unit: 'calendar', attachmentRequiredOver: null, active: true },
+    { name: 'Old Leave', entitlement: 5, unit: 'working', attachmentRequiredOver: null, active: false },
+  ],
+  holidays: [],
+};
 
 describe('public holidays', () => {
   test('includes Good Friday and Easter Monday', () => {
-    const holidays = getPublicHolidays(2026); // Easter Sunday is 5 April 2026
+    const holidays = getPublicHolidays(2026, POLICY); // Easter Sunday is 5 April 2026
     expect(holidays.has('2026-04-03')).toBe(true);
     expect(holidays.has('2026-04-06')).toBe(true);
   });
 
   test('moves a Sunday holiday to Monday', () => {
-    expect(getPublicHolidays(2023).has('2023-01-02')).toBe(true); // New Year's Day was a Sunday
+    expect(getPublicHolidays(2023, POLICY).has('2023-01-02')).toBe(true); // New Year's Day was a Sunday
   });
 
   test('moves Christmas on a Sunday to Tuesday, after Boxing Day', () => {
-    const holidays = getPublicHolidays(2022);
+    const holidays = getPublicHolidays(2022, POLICY);
     expect(holidays.has('2022-12-26')).toBe(true);
     expect(holidays.has('2022-12-27')).toBe(true);
+  });
+
+  test('names the fixed holidays, including observed days', () => {
+    expect(fixedHolidays(2022)).toContainEqual({ date: '2022-12-27', name: 'Christmas Day (observed)' });
+    expect(fixedHolidays(2026)).toContainEqual({ date: '2026-04-03', name: 'Good Friday' });
+  });
+
+  test('adds gazetted holidays from the policy for their year only', () => {
+    const policy = { ...POLICY, holidays: [{ date: '2026-03-20', name: 'Idd-ul-Fitr' }] };
+    expect(getPublicHolidays(2026, policy).has('2026-03-20')).toBe(true);
+    expect(getPublicHolidays(2027, policy).has('2026-03-20')).toBe(false);
   });
 });
 
 describe('countLeaveDays', () => {
   test('skips weekends for working-day leave', () => {
-    expect(countLeaveDays('Annual Leave', '2026-10-16', '2026-10-19')).toBe(2); // Fri to Mon
+    expect(countLeaveDays('Annual Leave', '2026-10-16', '2026-10-19', POLICY)).toBe(2); // Fri to Mon
   });
 
   test('skips public holidays', () => {
-    expect(countLeaveDays('Annual Leave', '2026-10-19', '2026-10-21')).toBe(2); // 20 Oct is Mashujaa Day
+    expect(countLeaveDays('Annual Leave', '2026-10-19', '2026-10-21', POLICY)).toBe(2); // 20 Oct is Mashujaa Day
+  });
+
+  test('skips gazetted holidays', () => {
+    const policy = { ...POLICY, holidays: [{ date: '2026-03-20', name: 'Idd-ul-Fitr' }] };
+    expect(countLeaveDays('Annual Leave', '2026-03-16', '2026-03-20', POLICY)).toBe(5);
+    expect(countLeaveDays('Annual Leave', '2026-03-16', '2026-03-20', policy)).toBe(4);
   });
 
   test('counts every day for calendar-day leave', () => {
-    expect(countLeaveDays('Maternity Leave', '2026-10-16', '2026-10-19')).toBe(4);
+    expect(countLeaveDays('Maternity Leave', '2026-10-16', '2026-10-19', POLICY)).toBe(4);
+  });
+
+  test('handles leave running across New Year', () => {
+    expect(countLeaveDays('Annual Leave', '2026-12-30', '2027-01-04', POLICY)).toBe(3); // 30, 31 Dec and 4 Jan
   });
 
   test('returns 0 when the end is before the start', () => {
-    expect(countLeaveDays('Annual Leave', '2026-10-19', '2026-10-16')).toBe(0);
+    expect(countLeaveDays('Annual Leave', '2026-10-19', '2026-10-16', POLICY)).toBe(0);
   });
 });
 
@@ -45,17 +76,26 @@ describe('getBalances', () => {
       { employeeId: 'E2', type: 'Annual Leave', from: '2026-03-02', days: 9, status: 'Approved (Final)' },
       { employeeId: 'E1', type: 'Annual Leave', from: '2025-03-02', days: 9, status: 'Approved (Final)' },
     ];
-    const annual = getBalances(requests, 'E1', 2026).find(b => b.type === 'Annual Leave');
+    const annual = getBalances(requests, 'E1', 2026, POLICY).find(b => b.type === 'Annual Leave');
     expect(annual).toMatchObject({ entitlement: 21, used: 5, pending: 3, remaining: 13 });
+  });
+
+  test('leaves out inactive leave types', () => {
+    expect(getBalances([], 'E1', 2026, POLICY).map(b => b.type)).not.toContain('Old Leave');
   });
 });
 
 describe('validateLeaveRequest', () => {
   const today = '2026-10-14';
-  const validate = (form, requests = []) => validateLeaveRequest(form, { requests, employeeId: 'E1', today });
+  const validate = (form, requests = []) => validateLeaveRequest(form, { requests, employeeId: 'E1', today, policy: POLICY });
 
   test('accepts a valid request', () => {
     expect(validate({ type: 'Annual Leave', from: '2026-11-02', to: '2026-11-06' })).toEqual([]);
+  });
+
+  test('rejects unknown and inactive leave types', () => {
+    expect(validate({ type: 'Holiday Leave', from: '2026-11-02', to: '2026-11-06' })).toEqual(['Choose a valid leave type.']);
+    expect(validate({ type: 'Old Leave', from: '2026-11-02', to: '2026-11-06' })).toEqual(['Choose a valid leave type.']);
   });
 
   test('rejects dates in the past', () => {

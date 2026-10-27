@@ -12,7 +12,14 @@ if (!/test/i.test(process.env.DATABASE_URL || '')) {
 }
 
 export async function resetDb() {
-  await pool.query('TRUNCATE users, sessions, leave_requests, leave_request_history RESTART IDENTITY CASCADE');
+  await pool.query(`TRUNCATE users, sessions, leave_requests, leave_request_history, public_holidays, leave_types
+                    RESTART IDENTITY CASCADE`);
+  // The same starting leave types as migration 004
+  await pool.query(`
+    INSERT INTO leave_types (name, entitlement, unit, attachment_required_over, sort_order) VALUES
+      ('Annual Leave', 21, 'working', NULL, 1), ('Sick Leave', 14, 'working', 2, 2),
+      ('Maternity Leave', 90, 'calendar', NULL, 3), ('Paternity Leave', 14, 'calendar', NULL, 4),
+      ('Compassionate Leave', 5, 'working', NULL, 5), ('Study Leave', 10, 'working', NULL, 6)`);
 }
 
 let counter = 0;

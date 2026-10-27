@@ -10,8 +10,10 @@ import Toast from '../components/Toast';
 import ReviewModal from '../components/ReviewModal';
 import RequestDetails from '../components/RequestDetails';
 import StaffManagement from '../components/StaffManagement';
+import LeavePolicyManagement from '../components/LeavePolicyManagement';
 import { RequestsContext } from '../context/RequestsContext';
-import { LEAVE_TYPES, getBalances, isApproved, isPending, isRejected } from '../shared/leaveRules.js';
+import { usePolicy } from '../context/PolicyContext';
+import { activeLeaveTypes, getBalances, isApproved, isPending, isRejected } from '../shared/leaveRules.js';
 import '../styles/Dashboard.css';
 
 function AdminDashboard() {
@@ -19,6 +21,7 @@ function AdminDashboard() {
   const [selectedRequest, setSelectedRequest] = useState(null);
   const [viewingRequest, setViewingRequest] = useState(null);
   const { user } = useContext(AuthContext);
+  const { policy } = usePolicy();
   const [staff, setStaff] = useState([]);
   const [toastMessage, setToastMessage] = useState(null);
 
@@ -48,12 +51,12 @@ function AdminDashboard() {
       "Days",
       "Reason",
       "Status",
-      ...Object.keys(LEAVE_TYPES).map(type => `${type} Remaining`)
+      ...activeLeaveTypes(policy).map(t => `${t.name} Remaining`)
     ];
     const rows = requests.map(r => {
     const emp = { id: r.staffNo || "N/A", name: r.employee || "Unknown", role: r.role || "Employee" };
     const year = Number(r.from?.slice(0, 4)) || new Date().getFullYear();
-    const balances = getBalances(requests, r.employeeId, year);
+    const balances = getBalances(requests, r.employeeId, year, policy);
 
 
       return [
@@ -170,6 +173,9 @@ function AdminDashboard() {
 
         {/* ✅ Staff accounts */}
         <StaffManagement currentUserId={user?.id} onNotify={setToastMessage} onUsersChange={setStaff} />
+
+        {/* ✅ Leave types and public holidays */}
+        <LeavePolicyManagement onNotify={setToastMessage} />
 
         {/* ✅ Toast Notification */}
         {toastMessage && (

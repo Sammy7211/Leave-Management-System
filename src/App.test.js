@@ -1,20 +1,35 @@
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import App from './App';
 import { AuthProvider } from './context/AuthContext';
 import { RequestsProvider } from './context/RequestsContext';
+import { PolicyProvider } from './context/PolicyContext';
 import * as authService from './services/authService';
 import * as requestsService from './services/requestsService';
 import * as usersService from './services/usersService';
+import * as policyService from './services/policyService';
 
 // No real server in these tests: the API calls are faked
 jest.mock('./services/authService');
 jest.mock('./services/requestsService');
 jest.mock('./services/usersService');
+jest.mock('./services/policyService');
 
 const JANE = { id: 3, staffNo: 'EMP003', name: 'Jane Employee', role: 'employee' };
 const ALICE = { id: 1, staffNo: 'EMP001', name: 'Alice', role: 'manager' };
 const ADMIN = { id: 4, staffNo: 'EMP004', name: 'Admin User', role: 'admin' };
+
+const leaveType = (id, name, overrides = {}) => ({
+  id, name, entitlement: 21, unit: 'working', attachmentRequiredOver: null, active: true, ...overrides,
+});
+const POLICY = {
+  leaveTypes: [
+    leaveType(1, 'Annual Leave'),
+    leaveType(2, 'Sick Leave', { entitlement: 14, attachmentRequiredOver: 2 }),
+    leaveType(3, 'Old Leave', { active: false }),
+  ],
+  holidays: [],
+};
 
 const janesRequest = (overrides = {}) => ({
   id: 1, employeeId: 3, staffNo: 'EMP003', employee: 'Jane Employee', role: 'Employee',
@@ -26,9 +41,11 @@ function renderApp(path = '/') {
   window.history.pushState({}, '', path);
   return render(
     <AuthProvider>
-      <RequestsProvider>
-        <App />
-      </RequestsProvider>
+      <PolicyProvider>
+        <RequestsProvider>
+          <App />
+        </RequestsProvider>
+      </PolicyProvider>
     </AuthProvider>
   );
 }
@@ -39,6 +56,7 @@ const serverHas = (requests) => requestsService.fetchRequests.mockResolvedValue(
 beforeEach(() => {
   authService.getCurrentUser.mockResolvedValue(null);
   serverHas([]);
+  policyService.fetchPolicy.mockResolvedValue(POLICY);
 });
 
 test('shows the login page when not logged in', async () => {
@@ -249,4 +267,54 @@ test('if the server refuses a new account, the form shows why', async () => {
   userEvent.click(screen.getByRole('button', { name: 'Save' }));
 
   expect(await screen.findByRole('alert')).toHaveTextContent('already uses that email');
+});
+
+test('the leave form offers the active leave types from the server', async () => {
+  loggedInAs(JANE);
+  renderApp('/employee');
+
+  userEvent.click(await screen.findByRole('button', { name: '+ Apply for Leave' }));
+
+  const options = Array.from(screen.getByLabelText(/^Leave Type/).options).map(o => o.textContent);
+  expect(options).toEqual(['Select Leave Type', 'Annual Leave', 'Sick Leave']); // not the inactive one
+});
+
+test('admin can add a gazetted holiday', async () => {
+  loggedInAs(ADMIN);
+  usersService.fetchUsers.mockResolvedValue([]);
+  policyService.addHoliday.mockResolvedValue({
+    ...POLICY, holidays: [{ id: 1, date: '2099-03-04', name: 'Idd-ul-Fitr' }], recalculated: 2,
+  });
+
+  renderApp('/admin');
+
+  fireEvent.change(await screen.findByLabelText('Date'), { target: { value: '2099-03-04' } });
+  userEvent.type(screen.getByLabelText('Name'), 'Idd-ul-Fitr');
+  userEvent.click(screen.getByRole('button', { name: 'Add Holiday' }));
+
+  expect(await screen.findByText(/Idd-ul-Fitr was added as a public holiday. 2 booked request\(s\) were recounted/)).toBeInTheDocument();
+  expect(policyService.addHoliday).toHaveBeenCalledWith('2099-03-04', 'Idd-ul-Fitr');
+  expect(screen.getAllByText('Idd-ul-Fitr').length).toBeGreaterThan(0); // in the holidays table
+  await waitFor(() => expect(requestsService.fetchRequests).toHaveBeenCalledTimes(2)); // requests reloaded
+});
+
+test('admin can change a leave entitlement', async () => {
+  loggedInAs(ADMIN);
+  usersService.fetchUsers.mockResolvedValue([]);
+  policyService.updateLeaveType.mockResolvedValue({ ...POLICY, recalculated: 0 });
+
+  renderApp('/admin');
+
+  await screen.findByText('Leave Types');
+  const annualRow = screen.getAllByText('Annual Leave').map(el => el.closest('tr')).find(row => row?.textContent.includes('Working days'));
+  userEvent.click(within(annualRow).getByRole('button', { name: 'Edit' }));
+  const days = screen.getByLabelText('Days per year');
+  userEvent.clear(days);
+  userEvent.type(days, '24');
+  userEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+  expect(await screen.findByText('Annual Leave was saved.')).toBeInTheDocument();
+  expect(policyService.updateLeaveType).toHaveBeenCalledWith(1, {
+    name: 'Annual Leave', entitlement: 24, unit: 'working', attachmentRequiredOver: null, active: true,
+  });
 });

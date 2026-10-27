@@ -7,6 +7,7 @@ import { authenticate } from './middleware/auth.js';
 import authRoutes from './routes/auth.js';
 import requestRoutes from './routes/requests.js';
 import userRoutes from './routes/users.js';
+import policyRoutes from './routes/policy.js';
 
 const app = express();
 
@@ -19,6 +20,7 @@ app.get('/api/health', (req, res) => res.json({ ok: true }));
 app.use('/api/auth', authRoutes);
 app.use('/api/requests', requestRoutes);
 app.use('/api/users', userRoutes);
+app.use('/api/policy', policyRoutes);
 
 app.use('/api', (req, res) => res.status(404).json({ error: 'Not found.' }));
 

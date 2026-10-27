@@ -69,6 +69,14 @@ Never edit a migration that has already been applied. Add a new numbered file to
 | POST | `/api/users` | admin | `{ staffNo, name, email, role, managerId, temporaryPassword }` |
 | PATCH | `/api/users/:id` | admin | Any of `{ staffNo, name, email, role, managerId, active }` |
 | POST | `/api/users/:id/reset-password` | admin | `{ temporaryPassword }`; logs the user out everywhere |
+| GET | `/api/policy` | logged in | `{ leaveTypes, holidays }` (gazetted holidays; fixed ones and Easter are computed) |
+| POST | `/api/policy/leave-types` | admin | `{ name, entitlement, unit, attachmentRequiredOver, active }` |
+| PATCH | `/api/policy/leave-types/:id` | admin | Any of the above; changing `unit` recounts that type's open requests |
+| POST | `/api/policy/holidays` | admin | `{ date, name }`; recounts booked leave that hasn't finished |
+| DELETE | `/api/policy/holidays/:id` | admin | Removes a holiday; recounts booked leave that hasn't finished |
+
+Policy changes return the updated policy plus `recalculated` (how many requests' days changed);
+each recount is recorded in that request's history.
 
 Users whose password was set by an admin get `403` with `code: "PASSWORD_CHANGE_REQUIRED"`
 from every route except `me`, `password` and `logout` until they choose their own.

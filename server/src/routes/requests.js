@@ -3,7 +3,8 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { query, withTransaction } from '../db.js';
 import { requireAuth } from '../middleware/auth.js';
-import { LEAVE_TYPES, countLeaveDays, todayISO, validateLeaveRequest } from '../../../src/shared/leaveRules.js';
+import { countLeaveDays, todayISO, validateLeaveRequest } from '../../../src/shared/leaveRules.js';
+import { loadPolicy } from '../leave/policy.js';
 import { ROLE_LABELS, canView, decide, initialStatus } from '../leave/workflow.js';
 
 const router = Router();
@@ -80,7 +81,7 @@ router.get('/', async (req, res) => {
 const isoDate = z.iso.date({ error: 'Dates must be valid and in YYYY-MM-DD format.' });
 
 const createSchema = z.object({
-  type: z.enum(Object.keys(LEAVE_TYPES), { error: 'Choose a valid leave type.' }),
+  type: z.string({ error: 'Choose a valid leave type.' }).trim().min(1, 'Choose a valid leave type.'), // checked against the policy below
   from: isoDate,
   to: isoDate,
   reason: z.string().trim().min(1, 'Please give a reason.').max(1000, 'The reason is too long (1000 characters maximum).'),
@@ -110,7 +111,8 @@ router.post('/', async (req, res) => {
       [applicant.id]
     );
 
-    const errors = validateLeaveRequest(form, { requests: existing, employeeId: applicant.id, today: todayISO() });
+    const policy = await loadPolicy(db);
+    const errors = validateLeaveRequest(form, { requests: existing, employeeId: applicant.id, policy, today: todayISO() });
     if (errors.length) return { errors };
 
     const status = initialStatus(applicant.role);
@@ -119,7 +121,7 @@ router.post('/', async (req, res) => {
          (employee_id, applicant_role, leave_type, start_date, end_date, days, reason, attachment_name, status)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id`,
       [applicant.id, applicant.role, form.type, form.from, form.to,
-        countLeaveDays(form.type, form.from, form.to), form.reason, form.attachment?.name ?? null, status]
+        countLeaveDays(form.type, form.from, form.to, policy), form.reason, form.attachment?.name ?? null, status]
     );
     await addHistory(db, rows[0].id, status, applicant, 'Submitted');
     return { request: await findRequest(db, rows[0].id) };

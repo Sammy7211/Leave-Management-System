@@ -6,6 +6,7 @@ import { withTransaction, query } from '../db.js';
 import { requireRole } from '../middleware/auth.js';
 import { deleteUserSessions } from '../auth/sessions.js';
 import { hashPassword, passwordSchema } from '../auth/passwords.js';
+import { HttpError, handle as baseHandle, parseBody, parseId as baseParseId } from '../http.js';
 
 const router = Router();
 router.use(requireRole('admin'));
@@ -61,25 +62,7 @@ const updateSchema = z.object({
 
 const resetPasswordSchema = z.object({ temporaryPassword: passwordSchema });
 
-// Thrown inside a transaction to roll it back and send a specific error
-class HttpError extends Error {
-  constructor(status, message) {
-    super(message);
-    this.status = status;
-  }
-}
-
-const parseId = (value) => {
-  const id = Number(value);
-  if (!Number.isInteger(id) || id <= 0) throw new HttpError(404, 'User not found.');
-  return id;
-};
-
-const parseBody = (schema, body) => {
-  const parsed = schema.safeParse(body);
-  if (!parsed.success) throw new HttpError(400, parsed.error.issues[0].message);
-  return parsed.data;
-};
+const parseId = (value) => baseParseId(value, 'User not found.');
 
 // Checks a user's role / line manager / active combination is allowed
 async function checkUserRules(db, { id, role, managerId, active }) {
@@ -120,16 +103,7 @@ function friendlyDbError(err) {
 
 const findUser = async (db, id) => (await db.query(`${USER_SELECT} WHERE u.id = $1`, [id])).rows[0];
 
-// Wraps a handler so HttpErrors become JSON responses
-const handle = (fn) => async (req, res) => {
-  try {
-    await fn(req, res);
-  } catch (err) {
-    const e = friendlyDbError(err);
-    if (!(e instanceof HttpError)) throw e;
-    res.status(e.status).json({ error: e.message });
-  }
-};
+const handle = (fn) => baseHandle(fn, friendlyDbError);
 
 // GET /api/users: everyone, active first, by name
 router.get('/', async (req, res) => {

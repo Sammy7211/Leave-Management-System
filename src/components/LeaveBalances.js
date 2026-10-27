@@ -2,6 +2,7 @@
 import React, { useContext } from 'react';
 import { RequestsContext } from '../context/RequestsContext';
 import { AuthContext } from '../context/AuthContext';
+import { usePolicy } from '../context/PolicyContext';
 import { getBalances } from '../shared/leaveRules.js';
 import DataTable from './DataTable';
 
@@ -9,13 +10,14 @@ import DataTable from './DataTable';
 function LeaveBalances() {
   const { requests } = useContext(RequestsContext);
   const { user } = useContext(AuthContext);
+  const { policy } = usePolicy();
   const year = new Date().getFullYear();
 
   return (
     <DataTable
       title={`My Leave Balances (${year})`}
       headers={['Leave Type', 'Entitlement', 'Taken', 'Pending', 'Remaining']}
-      rows={getBalances(requests, user?.id, year).map(b => [
+      rows={getBalances(requests, user?.id, year, policy).map(b => [
         b.type,
         `${b.entitlement} ${b.unit === 'calendar' ? 'calendar days' : 'working days'}`,
         b.used,

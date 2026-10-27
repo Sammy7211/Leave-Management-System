@@ -2,7 +2,8 @@
 import React, { useState, useContext } from 'react';
 import { RequestsContext } from '../context/RequestsContext';
 import { AuthContext } from '../context/AuthContext';
-import { LEAVE_TYPES, countLeaveDays, getBalances, todayISO, validateLeaveRequest } from '../shared/leaveRules.js';
+import { usePolicy } from '../context/PolicyContext';
+import { activeLeaveTypes, countLeaveDays, findLeaveType, getBalances, todayISO, validateLeaveRequest } from '../shared/leaveRules.js';
 import '../styles/Modal.css';
 
 // The server works out the days, the starting status and who reviews it from the
@@ -10,6 +11,7 @@ import '../styles/Modal.css';
 function LeaveForm({ onSubmit, onClose }) {
   const { requests, addRequest } = useContext(RequestsContext);
   const { user } = useContext(AuthContext);
+  const { policy } = usePolicy();
   const [formData, setFormData] = useState({
     type: '',
     from: '',
@@ -20,14 +22,15 @@ function LeaveForm({ onSubmit, onClose }) {
   const [submitting, setSubmitting] = useState(false);
   const [serverError, setServerError] = useState('');
 
-  const days = countLeaveDays(formData.type, formData.from, formData.to);
-  const errors = validateLeaveRequest(formData, { requests, employeeId: user?.id });
+  const days = countLeaveDays(formData.type, formData.from, formData.to, policy);
+  const errors = validateLeaveRequest(formData, { requests, employeeId: user?.id, policy });
   const year = formData.from ? Number(formData.from.slice(0, 4)) : new Date().getFullYear();
   const balance = formData.type
-    ? getBalances(requests, user?.id, year).find(b => b.type === formData.type)
+    ? getBalances(requests, user?.id, year, policy).find(b => b.type === formData.type)
     : null;
-  const unit = LEAVE_TYPES[formData.type]?.unit;
-  const attachmentLimit = LEAVE_TYPES[formData.type]?.attachmentRequiredOver;
+  const leaveType = findLeaveType(policy, formData.type);
+  const unit = leaveType?.unit;
+  const attachmentLimit = leaveType?.attachmentRequiredOver;
 
   const handleChange = (field, value) => {
     setFormData({ ...formData, [field]: value });
@@ -54,12 +57,14 @@ function LeaveForm({ onSubmit, onClose }) {
     if (onClose) onClose(); // ✅ closes modal only
   };
 
+  if (!policy) return <p className="form-hint">Loading leave types…</p>;
+
   return (
     <form onSubmit={handleSubmit} className="leave-form">
       <label>Leave Type
         <select value={formData.type} onChange={(e) => handleChange('type', e.target.value)} required>
           <option value="">Select Leave Type</option>
-          {Object.keys(LEAVE_TYPES).map(type => <option key={type} value={type}>{type}</option>)}
+          {activeLeaveTypes(policy).map(t => <option key={t.id} value={t.name}>{t.name}</option>)}
         </select>
       </label>
       {balance && (
@@ -82,7 +87,7 @@ function LeaveForm({ onSubmit, onClose }) {
         <textarea value={formData.reason} onChange={(e) => handleChange('reason', e.target.value)} required />
       </label>
 
-      <label>Attachment {attachmentLimit !== undefined ? `(required if over ${attachmentLimit} days)` : '(optional)'}
+      <label>Attachment {attachmentLimit !== null && attachmentLimit !== undefined ? `(required if over ${attachmentLimit} days)` : '(optional)'}
         <input type="file" accept=".pdf,.doc,.docx,.jpg,.png"
           onChange={(e) => handleChange('attachment', e.target.files[0] || null)} />
       </label>
