@@ -25,6 +25,12 @@ export function AuthProvider({ children }) {
     return loggedIn;
   };
 
+  const changePassword = async (currentPassword, newPassword) => {
+    const updated = await authService.changePassword(currentPassword, newPassword);
+    setUser(updated);
+    return updated;
+  };
+
   const logout = async () => {
     try {
       await authService.logout();
@@ -34,7 +40,7 @@ export function AuthProvider({ children }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, error, login, logout }}>
+    <AuthContext.Provider value={{ user, loading, error, login, logout, changePassword }}>
       {children}
     </AuthContext.Provider>
   );

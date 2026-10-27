@@ -29,13 +29,13 @@ export function RequestsProvider({ children }) {
   useEffect(() => {
     // Requests used to be kept in the browser; remove any left over from before
     localStorage.removeItem('requests');
-    if (user) {
+    if (user && !user.mustChangePassword) {
       refresh();
     } else {
       setRequests([]);
       setError('');
     }
-  }, [user?.id, refresh]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [user?.id, user?.mustChangePassword, refresh]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const replace = (updated) => setRequests(prev => prev.map(r => (r.id === updated.id ? updated : r)));
 

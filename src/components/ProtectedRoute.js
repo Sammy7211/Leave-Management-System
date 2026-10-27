@@ -15,6 +15,11 @@ function ProtectedRoute({ children, requiredRole }) {
     return <Navigate to="/login" replace />;
   }
 
+  // A temporary password set by an admin must be replaced before anything else
+  if (user.mustChangePassword) {
+    return <Navigate to="/change-password" replace />;
+  }
+
   if (requiredRole && user.role !== requiredRole) {
     return <Navigate to="/login" replace />;
   }

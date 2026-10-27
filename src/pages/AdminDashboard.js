@@ -1,5 +1,6 @@
 // src/pages/AdminDashboard.js
 import React, { useContext, useState } from 'react';
+import { AuthContext } from '../context/AuthContext';
 import Sidebar from '../components/Sidebar';
 import Topbar from '../components/TopBar';
 import StatsCard from '../components/StatsCard';
@@ -8,6 +9,7 @@ import Modal from '../components/Modal';
 import Toast from '../components/Toast';
 import ReviewModal from '../components/ReviewModal';
 import RequestDetails from '../components/RequestDetails';
+import StaffManagement from '../components/StaffManagement';
 import { RequestsContext } from '../context/RequestsContext';
 import { LEAVE_TYPES, getBalances, isApproved, isPending, isRejected } from '../shared/leaveRules.js';
 import '../styles/Dashboard.css';
@@ -16,19 +18,9 @@ function AdminDashboard() {
   const { requests, decideRequest } = useContext(RequestsContext);
   const [selectedRequest, setSelectedRequest] = useState(null);
   const [viewingRequest, setViewingRequest] = useState(null);
-  const [showEmployeeForm, setShowEmployeeForm] = useState(false);
-  const [employees, setEmployees] = useState([
-    { id: 'EMP001', name: 'Alice', role: 'Manager' },
-    { id: 'EMP002', name: 'Bob', role: 'HR' },
-  ]);
+  const { user } = useContext(AuthContext);
+  const [staff, setStaff] = useState([]);
   const [toastMessage, setToastMessage] = useState(null);
-
-  // ✅ Add new employee
-  const addEmployee = (employee) => {
-    setEmployees(prev => [...prev, { ...employee, id: `EMP${Date.now()}` }]);
-    setShowEmployeeForm(false);
-    setToastMessage({ text: 'Employee added successfully', type: 'success' });
-  };
 
   // ✅ Handle request actions
   // Admins make the final decision on pending requests; errors are shown in the review dialog
@@ -105,7 +97,7 @@ function AdminDashboard() {
 
         {/* ✅ Stats */}
         <div className="stats-container">
-          <StatsCard title="Total Employees" value={employees.length} />
+          <StatsCard title="Active Staff" value={staff.filter(s => s.active).length} />
           <StatsCard title="Leave Requests" value={requests.length} />
           <StatsCard title="Approved" value={acceptedRequests.length} />
           <StatsCard title="Rejected" value={rejectedRequests.length} />
@@ -176,38 +168,8 @@ function AdminDashboard() {
           rows={hrRequests.map(r => [r.employee, r.type, r.days, r.reason, r.status])}
         />
 
-        {/* ✅ Employee Management */}
-        <DataTable
-          title="Employees"
-          headers={['ID', 'Name', 'Role']}
-          rows={employees.map(e => [e.id, e.name, e.role])}
-        />
-
-        <button className="btn primary" onClick={() => setShowEmployeeForm(true)}>+ Add Employee</button>
-
-        {showEmployeeForm && (
-          <Modal onClose={() => setShowEmployeeForm(false)}>
-            <h3>Add Employee</h3>
-            <form onSubmit={(e) => {
-              e.preventDefault();
-              const form = e.target;
-              addEmployee({
-                name: form.name.value,
-                role: form.role.value,
-              });
-            }}>
-              <label>Name <input name="name" required /></label>
-              <label>Role
-                <select name="role" required>
-                  <option value="Employee">Employee</option>
-                  <option value="Manager">Manager</option>
-                  <option value="HR">HR</option>
-                </select>
-              </label>
-              <button type="submit" className="btn primary">Save</button>
-            </form>
-          </Modal>
-        )}
+        {/* ✅ Staff accounts */}
+        <StaffManagement currentUserId={user?.id} onNotify={setToastMessage} onUsersChange={setStaff} />
 
         {/* ✅ Toast Notification */}
         {toastMessage && (

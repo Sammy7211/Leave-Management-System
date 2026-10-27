@@ -2,6 +2,7 @@
 import React, { useState, useContext } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AuthContext } from '../context/AuthContext';
+import { homePath } from '../dashboards';
 import '../styles/Login.css';
 
 function LoginPage() {
@@ -17,25 +18,9 @@ function LoginPage() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     try {
-      const { role } = await login(credentials.email, credentials.password);
-
-      // Redirect based on role
-      switch (role) {
-        case 'employee':
-          navigate('/employee');
-          break;
-        case 'manager':
-          navigate('/manager');
-          break;
-        case 'hr':
-          navigate('/hr');
-          break;
-        case 'admin':
-          navigate('/admin');
-          break;
-        default:
-          navigate('/login');
-      }
+      const user = await login(credentials.email, credentials.password);
+      // Their dashboard, or the change-password page if they have a temporary password
+      navigate(homePath(user));
     } catch (err) {
       setError(err.message);
     }

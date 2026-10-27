@@ -25,12 +25,13 @@ export async function createUser(overrides = {}) {
     role: 'employee',
     active: true,
     managerId: null,
+    mustChangePassword: false,
     ...overrides,
   };
   const { rows } = await pool.query(
-    `INSERT INTO users (staff_no, name, email, password_hash, role, active, manager_id)
-     VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`,
-    [user.staffNo, user.name, user.email, passwordHash, user.role, user.active, user.managerId]
+    `INSERT INTO users (staff_no, name, email, password_hash, role, active, manager_id, must_change_password)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id`,
+    [user.staffNo, user.name, user.email, passwordHash, user.role, user.active, user.managerId, user.mustChangePassword]
   );
   return { ...user, id: rows[0].id };
 }

@@ -5,13 +5,16 @@ import { AuthProvider } from './context/AuthContext';
 import { RequestsProvider } from './context/RequestsContext';
 import * as authService from './services/authService';
 import * as requestsService from './services/requestsService';
+import * as usersService from './services/usersService';
 
 // No real server in these tests: the API calls are faked
 jest.mock('./services/authService');
 jest.mock('./services/requestsService');
+jest.mock('./services/usersService');
 
 const JANE = { id: 3, staffNo: 'EMP003', name: 'Jane Employee', role: 'employee' };
 const ALICE = { id: 1, staffNo: 'EMP001', name: 'Alice', role: 'manager' };
+const ADMIN = { id: 4, staffNo: 'EMP004', name: 'Admin User', role: 'admin' };
 
 const janesRequest = (overrides = {}) => ({
   id: 1, employeeId: 3, staffNo: 'EMP003', employee: 'Jane Employee', role: 'Employee',
@@ -173,4 +176,77 @@ test('sidebar only links to the user\'s own dashboard', async () => {
   renderApp('/employee');
   expect(await screen.findByRole('link', { name: 'My Dashboard' })).toBeInTheDocument();
   expect(screen.queryByRole('link', { name: /Admin/ })).not.toBeInTheDocument();
+});
+
+test('a user with a temporary password must change it before using the app', async () => {
+  loggedInAs({ ...JANE, mustChangePassword: true });
+  authService.changePassword.mockResolvedValue({ ...JANE, mustChangePassword: false });
+
+  renderApp('/employee');
+
+  expect(await screen.findByText(/You are using a temporary password/)).toBeInTheDocument();
+  expect(requestsService.fetchRequests).not.toHaveBeenCalled(); // the server would refuse
+
+  userEvent.type(screen.getByLabelText(/Temporary password/), 'temp-pass-123');
+  userEvent.type(screen.getByLabelText(/^New password/), 'my-own-password');
+  userEvent.type(screen.getByLabelText(/^Confirm new password/), 'my-own-password');
+  userEvent.click(screen.getByRole('button', { name: 'Change Password' }));
+
+  expect(await screen.findByText('Employee Dashboard')).toBeInTheDocument();
+  expect(authService.changePassword).toHaveBeenCalledWith('temp-pass-123', 'my-own-password');
+});
+
+test('the change-password form checks the new passwords match', async () => {
+  loggedInAs(JANE);
+  renderApp('/change-password');
+
+  userEvent.type(await screen.findByLabelText(/Current password/), 'old-password');
+  userEvent.type(screen.getByLabelText(/^New password/), 'my-own-password');
+  userEvent.type(screen.getByLabelText(/^Confirm new password/), 'something-else');
+  userEvent.click(screen.getByRole('button', { name: 'Change Password' }));
+
+  expect(screen.getByRole('alert')).toHaveTextContent('do not match');
+  expect(authService.changePassword).not.toHaveBeenCalled();
+});
+
+test('admin sees staff from the server and can add a staff member', async () => {
+  loggedInAs(ADMIN);
+  usersService.fetchUsers.mockResolvedValue([
+    { id: 1, staffNo: 'EMP001', name: 'Alice', email: 'manager@example.com', role: 'manager', managerId: null, managerName: null, active: true },
+    { id: 3, staffNo: 'EMP003', name: 'Jane Employee', email: 'employee@example.com', role: 'employee', managerId: 1, managerName: 'Alice', active: true },
+  ]);
+  usersService.createUser.mockResolvedValue({ id: 9, name: 'Wanjiru Kamau' });
+
+  renderApp('/admin');
+
+  expect(await screen.findByText('employee@example.com')).toBeInTheDocument();
+  userEvent.click(screen.getByRole('button', { name: '+ Add Staff Member' }));
+  userEvent.type(screen.getByLabelText('Staff number'), 'KAL-100');
+  userEvent.type(screen.getByLabelText('Full name'), 'Wanjiru Kamau');
+  userEvent.type(screen.getByLabelText('Email'), 'wanjiru@example.com');
+  userEvent.selectOptions(screen.getByLabelText(/^Line manager/), 'Alice (EMP001)');
+  userEvent.type(screen.getByLabelText(/^Temporary password/), 'temp-pass-123');
+  userEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+  expect(await screen.findByText(/Account created for Wanjiru Kamau/)).toBeInTheDocument();
+  expect(usersService.createUser).toHaveBeenCalledWith({
+    staffNo: 'KAL-100', name: 'Wanjiru Kamau', email: 'wanjiru@example.com', role: 'employee',
+    managerId: 1, temporaryPassword: 'temp-pass-123',
+  });
+});
+
+test('if the server refuses a new account, the form shows why', async () => {
+  loggedInAs(ADMIN);
+  usersService.fetchUsers.mockResolvedValue([]);
+  usersService.createUser.mockRejectedValue(new Error('Another account already uses that email address.'));
+
+  renderApp('/admin');
+  userEvent.click(await screen.findByRole('button', { name: '+ Add Staff Member' }));
+  userEvent.type(screen.getByLabelText('Staff number'), 'KAL-100');
+  userEvent.type(screen.getByLabelText('Full name'), 'Wanjiru Kamau');
+  userEvent.type(screen.getByLabelText('Email'), 'jane@example.com');
+  userEvent.type(screen.getByLabelText(/^Temporary password/), 'temp-pass-123');
+  userEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+  expect(await screen.findByRole('alert')).toHaveTextContent('already uses that email');
 });

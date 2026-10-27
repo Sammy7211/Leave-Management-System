@@ -25,3 +25,13 @@ export async function getCurrentUser() {
 export async function logout() {
   await api.post('/auth/logout');
 }
+
+// Changes the logged-in user's password; returns the updated user
+export async function changePassword(currentPassword, newPassword) {
+  try {
+    const { data } = await api.post('/auth/password', { currentPassword, newPassword });
+    return data.user;
+  } catch (err) {
+    throw new Error(errorMessage(err));
+  }
+}

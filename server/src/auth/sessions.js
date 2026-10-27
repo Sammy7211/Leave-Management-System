@@ -8,7 +8,7 @@ export const SESSION_COOKIE = 'sid';
 const hashToken = (token) => createHash('sha256').update(token).digest('hex');
 
 // Columns safe to send to the browser (never the password hash)
-export const PUBLIC_USER_COLUMNS = 'u.id, u.staff_no, u.name, u.email, u.role, u.manager_id';
+export const PUBLIC_USER_COLUMNS = 'u.id, u.staff_no, u.name, u.email, u.role, u.manager_id, u.must_change_password';
 
 export const toPublicUser = (row) => ({
   id: row.id,
@@ -17,6 +17,7 @@ export const toPublicUser = (row) => ({
   email: row.email,
   role: row.role,
   managerId: row.manager_id,
+  mustChangePassword: row.must_change_password,
 });
 
 export async function createSession(userId) {
@@ -39,6 +40,14 @@ export async function getSessionUser(token) {
     [hashToken(token)]
   );
   return rows[0] ? toPublicUser(rows[0]) : null;
+}
+
+// Logs a user out everywhere, optionally keeping one session (e.g. the one changing the password)
+export async function deleteUserSessions(userId, { exceptToken } = {}) {
+  await query(
+    'DELETE FROM sessions WHERE user_id = $1 AND token_hash IS DISTINCT FROM $2',
+    [userId, exceptToken ? hashToken(exceptToken) : null]
+  );
 }
 
 export async function deleteSession(token) {

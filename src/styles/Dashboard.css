@@ -132,3 +132,18 @@ body.dark {
   border-radius: 6px;
   color: #a12a1d;
 }
+
+.row-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.input-with-button {
+  display: flex;
+  gap: 8px;
+}
+
+.input-with-button input {
+  flex: 1;
+}

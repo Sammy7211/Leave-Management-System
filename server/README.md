@@ -61,3 +61,14 @@ Never edit a migration that has already been applied. Add a new numbered file to
 | POST | `/api/auth/login` | anyone | `{ email, password }` → sets session cookie, returns `{ user }` |
 | POST | `/api/auth/logout` | anyone | Ends the session |
 | GET | `/api/auth/me` | logged in | Returns `{ user }` for the current session |
+| POST | `/api/auth/password` | logged in | `{ currentPassword, newPassword }`; logs out the user's other sessions |
+| GET | `/api/requests` | logged in | Requests the user may see: own; managers add direct reports; HR and admin see all |
+| POST | `/api/requests` | employee, manager, HR | `{ type, from, to, reason, attachment? }`; server computes days and status |
+| POST | `/api/requests/:id/decision` | reviewer | `{ decision: 'approve' \| 'reject', comment }`; comment required to reject |
+| GET | `/api/users` | admin | All staff accounts |
+| POST | `/api/users` | admin | `{ staffNo, name, email, role, managerId, temporaryPassword }` |
+| PATCH | `/api/users/:id` | admin | Any of `{ staffNo, name, email, role, managerId, active }` |
+| POST | `/api/users/:id/reset-password` | admin | `{ temporaryPassword }`; logs the user out everywhere |
+
+Users whose password was set by an admin get `403` with `code: "PASSWORD_CHANGE_REQUIRED"`
+from every route except `me`, `password` and `logout` until they choose their own.

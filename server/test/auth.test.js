@@ -27,6 +27,7 @@ test('logging in sets an httpOnly session cookie and returns the user', async ()
   assert.equal(res.status, 200);
   assert.deepEqual(res.body.user, {
     id: user.id, staffNo: user.staffNo, name: 'Jane', email: user.email, role: 'employee', managerId: null,
+    mustChangePassword: false,
   });
   const cookie = res.headers['set-cookie'][0];
   assert.match(cookie, /^sid=/);
@@ -122,4 +123,48 @@ test('requireRole allows listed roles and blocks others', async () => {
   assert.equal((await asHr.get('/guarded')).status, 200);
   assert.equal((await asEmployee.get('/guarded')).status, 403);
   assert.equal((await request(guarded).get('/guarded')).status, 401);
+});
+
+// --- Changing your password ---
+
+test('changing your password: old one stops working, other sessions are logged out', async () => {
+  const user = await createUser();
+  const laptop = await loginAs(user);
+  const phone = await loginAs(user);
+
+  const res = await laptop.post('/api/auth/password').send({ currentPassword: TEST_PASSWORD, newPassword: 'a-brand-new-password' });
+
+  assert.equal(res.status, 200);
+  assert.equal((await laptop.get('/api/auth/me')).status, 200); // this session stays logged in
+  assert.equal((await phone.get('/api/auth/me')).status, 401); // others are logged out
+  assert.equal((await request(app).post('/api/auth/login').send({ email: user.email, password: TEST_PASSWORD })).status, 401);
+  assert.equal((await request(app).post('/api/auth/login').send({ email: user.email, password: 'a-brand-new-password' })).status, 200);
+});
+
+test('changing your password needs the correct current password and a valid new one', async () => {
+  const user = await createUser();
+  const agent = await loginAs(user);
+  const change = (body) => agent.post('/api/auth/password').send(body);
+
+  assert.match((await change({ currentPassword: 'wrong', newPassword: 'a-brand-new-password' })).body.error, /incorrect/);
+  assert.match((await change({ currentPassword: TEST_PASSWORD, newPassword: 'short' })).body.error, /at least 8/);
+  assert.match((await change({ currentPassword: TEST_PASSWORD, newPassword: 'x'.repeat(73) })).body.error, /at most 72/);
+  assert.match((await change({ currentPassword: TEST_PASSWORD, newPassword: TEST_PASSWORD })).body.error, /different/);
+});
+
+test('a user with a temporary password can only change it until they do', async () => {
+  const user = await createUser({ mustChangePassword: true });
+  const agent = await loginAs(user);
+
+  const me = await agent.get('/api/auth/me');
+  assert.equal(me.status, 200);
+  assert.equal(me.body.user.mustChangePassword, true);
+
+  const blocked = await agent.get('/api/requests');
+  assert.equal(blocked.status, 403);
+  assert.equal(blocked.body.code, 'PASSWORD_CHANGE_REQUIRED');
+
+  await agent.post('/api/auth/password').send({ currentPassword: TEST_PASSWORD, newPassword: 'my-own-password' });
+  assert.equal((await agent.get('/api/requests')).status, 200);
+  assert.equal((await agent.get('/api/auth/me')).body.user.mustChangePassword, false);
 });

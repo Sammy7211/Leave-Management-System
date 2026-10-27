@@ -5,9 +5,10 @@ import rateLimit from 'express-rate-limit';
 import { z } from 'zod';
 import { query } from '../db.js';
 import config from '../config.js';
-import { requireAuth } from '../middleware/auth.js';
+import { requireSession } from '../middleware/auth.js';
+import { hashPassword, passwordSchema } from '../auth/passwords.js';
 import {
-  SESSION_COOKIE, PUBLIC_USER_COLUMNS, toPublicUser, createSession, deleteSession,
+  SESSION_COOKIE, PUBLIC_USER_COLUMNS, toPublicUser, createSession, deleteSession, deleteUserSessions,
 } from '../auth/sessions.js';
 
 const router = Router();
@@ -27,6 +28,14 @@ const loginLimiter = rateLimit({
   limit: 10,
   skip: () => config.isTest,
   message: { error: 'Too many login attempts. Please wait 15 minutes and try again.' },
+});
+
+// The current password is checked when changing it, so limit guesses there too
+const passwordLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 10,
+  skip: () => config.isTest,
+  message: { error: 'Too many attempts. Please wait 15 minutes and try again.' },
 });
 
 const cookieOptions = {
@@ -64,8 +73,39 @@ router.post('/logout', async (req, res) => {
   res.status(204).end();
 });
 
-router.get('/me', requireAuth, (req, res) => {
+router.get('/me', requireSession, (req, res) => {
   res.json({ user: req.user });
+});
+
+const changePasswordSchema = z.object({
+  currentPassword: z.string().min(1, 'Enter your current password.'),
+  newPassword: passwordSchema,
+});
+
+// Change your own password. Also how a temporary password set by an admin is replaced.
+// Every other session for the account is logged out.
+router.post('/password', requireSession, passwordLimiter, async (req, res) => {
+  const parsed = changePasswordSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ error: parsed.error.issues[0].message });
+  }
+  const { currentPassword, newPassword } = parsed.data;
+  if (newPassword === currentPassword) {
+    return res.status(400).json({ error: 'Choose a new password that is different from the current one.' });
+  }
+
+  const { rows } = await query('SELECT password_hash FROM users WHERE id = $1', [req.user.id]);
+  if (!(await bcrypt.compare(currentPassword, rows[0].password_hash))) {
+    return res.status(400).json({ error: 'Your current password is incorrect.' });
+  }
+
+  const { rows: updated } = await query(
+    `UPDATE users u SET password_hash = $1, must_change_password = FALSE WHERE u.id = $2
+     RETURNING ${PUBLIC_USER_COLUMNS}`,
+    [await hashPassword(newPassword), req.user.id]
+  );
+  await deleteUserSessions(req.user.id, { exceptToken: req.cookies?.[SESSION_COOKIE] });
+  res.json({ user: toPublicUser(updated[0]) });
 });
 
 export default router;

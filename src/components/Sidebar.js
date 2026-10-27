@@ -4,19 +4,12 @@ import { NavLink, useNavigate } from 'react-router-dom';
 import { AuthContext } from '../context/AuthContext';
 import '../styles/Sidebar.css';
 import logo from '../assets/kilimologo.png';
-
-// Each role only gets a link to its own dashboard
-const DASHBOARD_LINKS = {
-  employee: { to: '/employee', label: 'My Dashboard', role: 'Employee' },
-  manager: { to: '/manager', label: 'Manager Dashboard', role: 'Manager' },
-  hr: { to: '/hr', label: 'HR Dashboard', role: 'HR' },
-  admin: { to: '/admin', label: 'Admin Dashboard', role: 'Admin' },
-};
+import { DASHBOARDS } from '../dashboards';
 
 function Sidebar() {
   const navigate = useNavigate();
   const { user, logout } = useContext(AuthContext);
-  const link = DASHBOARD_LINKS[user?.role];
+  const link = DASHBOARDS[user?.role]; // each role only gets a link to its own dashboard
 
   const handleLogout = async () => {
     if (window.confirm("Are you sure you want to logout?")) {
@@ -41,6 +34,7 @@ function Sidebar() {
       <nav>
         <ul>
           {link && <li><NavLink to={link.to}>{link.label}</NavLink></li>}
+          {user && <li><NavLink to="/change-password">Change Password</NavLink></li>}
           <li>
             <button type="button" className="logout-btn" onClick={handleLogout}>
               Logout
