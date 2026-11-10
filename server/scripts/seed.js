@@ -1,6 +1,8 @@
 // server/scripts/seed.js
 // Creates (or resets) the four demo accounts for local development.
-// Safe to run repeatedly. All accounts get the password from SEED_PASSWORD.
+// Safe to run repeatedly. All accounts get the password from SEED_PASSWORD; to change it,
+// edit SEED_PASSWORD in .env and run "npm run seed" again. This also resets the demo
+// accounts' names, roles and line manager, and logs them out.
 import bcrypt from 'bcryptjs';
 import { pool } from '../src/db.js';
 
@@ -27,10 +29,17 @@ async function seed() {
        VALUES ($1, $2, $3, $4, $5)
        ON CONFLICT (email) DO UPDATE
          SET staff_no = EXCLUDED.staff_no, name = EXCLUDED.name,
-             password_hash = EXCLUDED.password_hash, role = EXCLUDED.role, active = TRUE`,
+             password_hash = EXCLUDED.password_hash, role = EXCLUDED.role, active = TRUE,
+             must_change_password = FALSE`,
       [u.staffNo, u.name, u.email, passwordHash, u.role]
     );
   }
+
+  // The password may have changed, so log the demo accounts out everywhere
+  await pool.query(
+    'DELETE FROM sessions WHERE user_id IN (SELECT id FROM users WHERE email = ANY($1))',
+    [DEMO_USERS.map(u => u.email)]
+  );
 
   // Alice manages the employee and HR staff
   await pool.query(
