@@ -1,4 +1,4 @@
-import { countLeaveDays, fixedHolidays, getBalances, getPublicHolidays, validateLeaveRequest } from './leaveRules.js';
+import { cancellationFor, countLeaveDays, fixedHolidays, getBalances, getPublicHolidays, validateLeaveRequest } from './leaveRules.js';
 
 const POLICY = {
   leaveTypes: [
@@ -131,5 +131,47 @@ describe('validateLeaveRequest', () => {
     const form = { type: 'Sick Leave', from: '2026-11-09', to: '2026-11-11' };
     expect(validate(form)[0]).toMatch(/supporting document/);
     expect(validate({ ...form, attachment: { name: 'note.pdf' } })).toEqual([]);
+  });
+});
+
+describe('cancellationFor', () => {
+  const today = '2026-10-14';
+
+  test('pending requests are withdrawn, no reason needed', () => {
+    expect(cancellationFor({ status: 'Pending HR Approval', from: '2026-10-01' }, today))
+      .toEqual({ status: 'Withdrawn', reasonRequired: false });
+  });
+
+  test('approved leave can be cancelled before it starts, with a reason', () => {
+    expect(cancellationFor({ status: 'Approved (Final)', from: '2026-10-15' }, today))
+      .toEqual({ status: 'Cancelled', reasonRequired: true });
+    expect(cancellationFor({ status: 'Approved by Manager', from: '2026-11-01' }, today).status).toBe('Cancelled');
+  });
+
+  test('approved leave that has started cannot be cancelled here', () => {
+    expect(cancellationFor({ status: 'Approved (Final)', from: '2026-10-14' }, today).error).toMatch(/already started/);
+  });
+
+  test('closed requests cannot be cancelled', () => {
+    for (const status of ['Rejected by Manager', 'Rejected (Final)', 'Withdrawn', 'Cancelled']) {
+      expect(cancellationFor({ status, from: '2026-11-01' }, today).error).toMatch(/already been closed/);
+    }
+  });
+});
+
+describe('withdrawn and cancelled requests', () => {
+  const requests = [
+    { employeeId: 'E1', type: 'Annual Leave', from: '2026-11-02', to: '2026-11-06', days: 5, status: 'Withdrawn' },
+    { employeeId: 'E1', type: 'Annual Leave', from: '2026-11-09', to: '2026-11-13', days: 5, status: 'Cancelled' },
+  ];
+
+  test('give their days back', () => {
+    expect(getBalances(requests, 'E1', 2026, POLICY).find(b => b.type === 'Annual Leave'))
+      .toMatchObject({ used: 0, pending: 0, remaining: 21 });
+  });
+
+  test('free up their dates', () => {
+    const form = { type: 'Annual Leave', from: '2026-11-02', to: '2026-11-13' };
+    expect(validateLeaveRequest(form, { requests, employeeId: 'E1', today: '2026-10-14', policy: POLICY })).toEqual([]);
   });
 });

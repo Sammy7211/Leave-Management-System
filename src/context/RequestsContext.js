@@ -57,8 +57,19 @@ export function RequestsProvider({ children }) {
     }
   };
 
+  const cancelRequest = async (id, comment) => {
+    try {
+      const updated = await requestsService.cancelRequest(id, comment);
+      replace(updated);
+      return updated;
+    } catch (err) {
+      refresh(); // it may have been decided meanwhile; show the current state
+      throw err;
+    }
+  };
+
   return (
-    <RequestsContext.Provider value={{ requests, loading, error, refresh, addRequest, decideRequest }}>
+    <RequestsContext.Provider value={{ requests, loading, error, refresh, addRequest, decideRequest, cancelRequest }}>
       {children}
     </RequestsContext.Provider>
   );

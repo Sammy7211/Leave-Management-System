@@ -24,3 +24,8 @@ export async function createRequest(request) {
 export async function decideRequest(id, decision, comment = '') {
   return (await call(api.post(`/requests/${id}/decision`, { decision, comment }))).request;
 }
+
+// Withdraws a pending request, or cancels approved leave before it starts (comment required then)
+export async function cancelRequest(id, comment = '') {
+  return (await call(api.post(`/requests/${id}/cancel`, { comment }))).request;
+}

@@ -41,7 +41,7 @@ function ReviewModal({ request, approveLabel = 'Approve', onApprove, onReject, o
   return (
     <Modal onClose={onClose}>
       <h3>Review Request</h3>
-      <RequestDetails request={request} />
+      <RequestDetails request={request} allowCancel={false} />
       {balance && (
         <p className="form-hint">
           {request.type} in {year}: {balance.used} taken, {balance.pending} pending,

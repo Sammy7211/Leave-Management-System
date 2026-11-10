@@ -6,6 +6,8 @@
 //   Manager:  Pending HR Approval -> (HR) -> Approved/Rejected (Final)
 //
 // Admins can make the final decision on any pending request. Nobody can decide their own request.
+// Applicants can withdraw pending requests and cancel approved leave before it starts
+// (see cancellationFor in src/shared/leaveRules.js); admins can do this on their behalf.
 
 export const ROLE_LABELS = { employee: 'Employee', manager: 'Manager', hr: 'HR', admin: 'Admin' };
 
@@ -49,4 +51,9 @@ export function decide({ actor, request, decision }) {
 
   const waitingFor = request.status === 'Pending HR Approval' ? 'HR' : "the applicant's line manager";
   return { error: `This request is waiting for ${waitingFor}.`, httpStatus: 403 };
+}
+
+// Who may cancel a request: the applicant, or an admin on their behalf
+export function canCancel(actor, request) {
+  return actor.id === request.employeeId || actor.role === 'admin';
 }

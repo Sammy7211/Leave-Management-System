@@ -23,7 +23,7 @@ export async function loadPolicy(db) {
   };
 }
 
-// Recounts the days of leave that hasn't finished yet (and wasn't rejected) after the
+// Recounts the days of leave that hasn't finished yet (and wasn't rejected, withdrawn or cancelled) after the
 // policy changes, e.g. a holiday is gazetted inside someone's booked leave. Each change
 // is recorded in the request's history. Only requests of `leaveType` if given.
 // Returns how many requests changed.
@@ -31,7 +31,8 @@ export async function recalculateOpenRequests(db, policy, actor, reason, { leave
   const { rows } = await db.query(
     `SELECT id, leave_type, start_date, end_date, days, status
      FROM leave_requests
-     WHERE end_date >= $1 AND status NOT LIKE '%Rejected%' AND ($2::text IS NULL OR leave_type = $2)
+     WHERE end_date >= $1 AND status NOT LIKE '%Rejected%' AND status NOT IN ('Withdrawn', 'Cancelled')
+       AND ($2::text IS NULL OR leave_type = $2)
      FOR UPDATE`,
     [todayISO(), leaveType ?? null]
   );

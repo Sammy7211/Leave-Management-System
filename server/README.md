@@ -65,6 +65,7 @@ Never edit a migration that has already been applied. Add a new numbered file to
 | GET | `/api/requests` | logged in | Requests the user may see: own; managers add direct reports; HR and admin see all |
 | POST | `/api/attachments?name=` | employee, manager, HR | Raw file as the body (PDF/JPEG/PNG/Word, max 5 MB, checked by contents); returns `{ attachment: { id, ... } }` |
 | POST | `/api/requests` | employee, manager, HR | `{ type, from, to, reason, attachmentId? }`; server computes days and status |
+| POST | `/api/requests/:id/cancel` | applicant, admin | `{ comment }`; withdraws a pending request, or cancels approved leave before it starts (comment required) |
 | GET | `/api/requests/:id/attachment` | applicant, line manager, HR, admin | Downloads the document; each download is logged in `attachment_access_log` |
 | POST | `/api/requests/:id/decision` | reviewer | `{ decision: 'approve' \| 'reject', comment }`; comment required to reject |
 | GET | `/api/users` | admin | All staff accounts |

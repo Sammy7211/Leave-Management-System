@@ -413,3 +413,59 @@ test('reviewers can download the supporting document', async () => {
 
   await waitFor(() => expect(attachmentsService.downloadAttachment).toHaveBeenCalledWith(1, 'note.pdf'));
 });
+
+test('an employee can withdraw a pending request', async () => {
+  loggedInAs(JANE);
+  serverHas([janesRequest({ reason: 'Trip' })]);
+  requestsService.cancelRequest.mockResolvedValue(janesRequest({ reason: 'Trip', status: 'Withdrawn' }));
+
+  renderApp('/employee');
+  userEvent.click(await screen.findByRole('button', { name: 'Details' }));
+  userEvent.click(screen.getByRole('button', { name: 'Withdraw Request' }));
+  userEvent.click(screen.getByRole('button', { name: 'Confirm: Withdraw Request' }));
+
+  await waitFor(() => expect(requestsService.cancelRequest).toHaveBeenCalledWith(1, ''));
+  expect((await screen.findAllByText('Withdrawn')).length).toBeGreaterThan(0); // details and table update
+  expect(screen.queryByRole('button', { name: 'Withdraw Request' })).not.toBeInTheDocument();
+});
+
+test('cancelling approved leave needs a reason', async () => {
+  loggedInAs(JANE);
+  serverHas([janesRequest({ status: 'Approved (Final)' })]);
+  requestsService.cancelRequest.mockResolvedValue(janesRequest({ status: 'Cancelled' }));
+
+  renderApp('/employee');
+  userEvent.click(await screen.findByRole('button', { name: 'Details' }));
+  userEvent.click(screen.getByRole('button', { name: 'Cancel Leave' }));
+  userEvent.click(screen.getByRole('button', { name: 'Confirm: Cancel Leave' }));
+  expect(screen.getByRole('alert')).toHaveTextContent('Please say why');
+  expect(requestsService.cancelRequest).not.toHaveBeenCalled();
+
+  userEvent.type(screen.getByLabelText('Reason for cancelling'), 'Trip postponed');
+  userEvent.click(screen.getByRole('button', { name: 'Confirm: Cancel Leave' }));
+  await waitFor(() => expect(requestsService.cancelRequest).toHaveBeenCalledWith(1, 'Trip postponed'));
+});
+
+test('no cancel option for leave that has started or a request that is closed', async () => {
+  loggedInAs(JANE);
+  serverHas([
+    janesRequest({ id: 1, reason: 'Started', from: '2020-01-06', to: '2020-01-07', status: 'Approved (Final)' }),
+    janesRequest({ id: 2, reason: 'Turned down', status: 'Rejected by Manager' }),
+  ]);
+
+  renderApp('/employee');
+  for (const button of await screen.findAllByRole('button', { name: 'Details' })) {
+    userEvent.click(button);
+    expect(screen.queryByRole('button', { name: /Withdraw Request|Cancel Leave/ })).not.toBeInTheDocument();
+  }
+});
+
+test('reviewers are not offered a cancel button in the review dialog', async () => {
+  loggedInAs(ADMIN);
+  usersService.fetchUsers.mockResolvedValue([]);
+  serverHas([janesRequest()]);
+
+  renderApp('/admin');
+  userEvent.click(await screen.findByRole('button', { name: 'Review' }));
+  expect(screen.queryByRole('button', { name: 'Withdraw Request' })).not.toBeInTheDocument();
+});

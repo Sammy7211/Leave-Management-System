@@ -3,9 +3,9 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { query, withTransaction } from '../db.js';
 import { requireAuth } from '../middleware/auth.js';
-import { countLeaveDays, todayISO, validateLeaveRequest } from '../../../src/shared/leaveRules.js';
+import { cancellationFor, countLeaveDays, todayISO, validateLeaveRequest } from '../../../src/shared/leaveRules.js';
 import { loadPolicy } from '../leave/policy.js';
-import { ROLE_LABELS, canView, decide, initialStatus } from '../leave/workflow.js';
+import { ROLE_LABELS, canCancel, canView, decide, initialStatus } from '../leave/workflow.js';
 import { attachmentDisposition } from '../attachments/files.js';
 
 const router = Router();
@@ -62,6 +62,7 @@ const toWorkflowRequest = (row) => ({
   applicantManagerId: row.applicant_manager_id,
   applicantRole: row.applicant_role,
   status: row.status,
+  from: row.start_date,
 });
 
 const findRequest = async (db, id, { lock = false } = {}) => {
@@ -191,6 +192,43 @@ router.post('/:id/decision', async (req, res) => {
 
     const outcome = decide({ actor: req.user, request: toWorkflowRequest(row), decision });
     if (outcome.error) return outcome;
+
+    await db.query('UPDATE leave_requests SET status = $1, updated_at = now() WHERE id = $2', [outcome.status, id]);
+    await addHistory(db, id, outcome.status, req.user, comment);
+    return { request: await findRequest(db, id) };
+  });
+
+  if (result.error) return res.status(result.httpStatus).json({ error: result.error });
+  res.json({ request: toApiRequest(result.request) });
+});
+
+const cancelSchema = z.object({
+  comment: z.string().trim().max(1000, 'The comment is too long (1000 characters maximum).').default(''),
+});
+
+// POST /api/requests/:id/cancel: withdraw a pending request, or cancel approved leave
+// before it starts (a reason is required then). The days go back to the balance.
+router.post('/:id/cancel', async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id) || id <= 0) return res.status(404).json({ error: 'Request not found.' });
+
+  const parsed = cancelSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0].message });
+  const { comment } = parsed.data;
+
+  const result = await withTransaction(async (db) => {
+    // Locked so a reviewer's decision and a cancellation can't both happen at once
+    const row = await findRequest(db, id, { lock: true });
+    if (!row || !canView(req.user, toWorkflowRequest(row))) return { error: 'Request not found.', httpStatus: 404 };
+    if (!canCancel(req.user, toWorkflowRequest(row))) {
+      return { error: 'Only the person who applied can cancel this request.', httpStatus: 403 };
+    }
+
+    const outcome = cancellationFor(toWorkflowRequest(row), todayISO());
+    if (outcome.error) return { error: outcome.error, httpStatus: 409 };
+    if (outcome.reasonRequired && !comment) {
+      return { error: 'Please say why this approved leave is being cancelled.', httpStatus: 400 };
+    }
 
     await db.query('UPDATE leave_requests SET status = $1, updated_at = now() WHERE id = $2', [outcome.status, id]);
     await addHistory(db, id, outcome.status, req.user, comment);

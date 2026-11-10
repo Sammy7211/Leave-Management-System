@@ -134,6 +134,24 @@ export function countLeaveDays(type, from, to, policy) {
 export const isPending = (status = '') => status.startsWith('Pending');
 export const isApproved = (status = '') => status.includes('Approved');
 export const isRejected = (status = '') => status.includes('Rejected');
+// Withdrawn while pending, or cancelled after approval: the days are given back
+export const isCancelled = (status = '') => status === 'Withdrawn' || status === 'Cancelled';
+// Pending or approved: the request still takes up the dates and the days
+export const isActive = (status = '') => isPending(status) || isApproved(status);
+
+// What cancelling a request would do, or why it can't be cancelled.
+// Pending requests are withdrawn; approved leave can be cancelled until the day it starts.
+// Returns { status, reasonRequired } or { error }.
+export function cancellationFor(request, today = todayISO()) {
+  if (isPending(request.status)) return { status: 'Withdrawn', reasonRequired: false };
+  if (isApproved(request.status)) {
+    if (request.from <= today) {
+      return { error: 'This leave has already started, so it can no longer be cancelled here. Please contact HR.' };
+    }
+    return { status: 'Cancelled', reasonRequired: true };
+  }
+  return { error: 'This request has already been closed.' };
+}
 
 // Leave taken and booked per type for one employee in one year.
 // A request counts towards the year it starts in.
@@ -172,7 +190,7 @@ export function validateLeaveRequest(form, { requests, employeeId, policy, today
   }
 
   const overlapping = requests.find(r =>
-    r.employeeId === employeeId && !isRejected(r.status) && r.from <= to && r.to >= from
+    r.employeeId === employeeId && isActive(r.status) && r.from <= to && r.to >= from
   );
   if (overlapping) {
     errors.push(`These dates overlap your ${overlapping.type} request (${overlapping.from} to ${overlapping.to}).`);

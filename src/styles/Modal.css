@@ -113,3 +113,13 @@
   display: block;
   margin: 2px 0 4px;
 }
+
+.cancel-open {
+  margin-top: 14px;
+}
+
+.cancel-section {
+  margin-top: 14px;
+  padding-top: 10px;
+  border-top: 1px solid #eee;
+}
