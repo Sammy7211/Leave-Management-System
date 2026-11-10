@@ -104,11 +104,6 @@ test('leave rules are enforced on the server', async () => {
   assert.equal(rows[0].n, 0);
 });
 
-test('sick leave over two days is accepted with a supporting document', async () => {
-  const created = await apply(jane, { type: 'Sick Leave', attachment: { name: 'doctors-note.pdf' } });
-  assert.deepEqual(created.attachment, { name: 'doctors-note.pdf' });
-});
-
 test('overlapping requests are refused unless the earlier one was rejected', async () => {
   const first = await apply(jane);
   const agent = await loginAs(jane);

@@ -9,6 +9,7 @@ import requestRoutes from './routes/requests.js';
 import userRoutes from './routes/users.js';
 import policyRoutes from './routes/policy.js';
 import reportRoutes from './routes/reports.js';
+import attachmentRoutes from './routes/attachments.js';
 
 const app = express();
 
@@ -23,6 +24,7 @@ app.use('/api/requests', requestRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/policy', policyRoutes);
 app.use('/api/reports', reportRoutes);
+app.use('/api/attachments', attachmentRoutes);
 
 app.use('/api', (req, res) => res.status(404).json({ error: 'Not found.' }));
 
@@ -30,6 +32,9 @@ app.use('/api', (req, res) => res.status(404).json({ error: 'Not found.' }));
 app.use((err, req, res, next) => {
   if (err.type === 'entity.parse.failed') {
     return res.status(400).json({ error: 'Invalid JSON.' });
+  }
+  if (err.type === 'entity.too.large') {
+    return res.status(413).json({ error: 'That is too large. Files can be at most 5 MB.' });
   }
   console.error(err);
   res.status(500).json({ error: 'Something went wrong on the server.' });

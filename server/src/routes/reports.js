@@ -25,11 +25,12 @@ const yearRange = (year) => [`${year}-01-01`, `${year}-12-31`];
 router.get('/requests.csv', handle(async (req, res) => {
   const { year } = parseBody(yearSchema, req.query);
   const { rows } = await query(
-    `SELECT r.*, u.staff_no, u.name, m.name AS manager_name,
+    `SELECT r.*, u.staff_no, u.name, m.name AS manager_name, att.file_name AS att_name,
             last.actor_name, last.actor_role, last.comment, last.created_at AS last_at
      FROM leave_requests r
      JOIN users u ON u.id = r.employee_id
      LEFT JOIN users m ON m.id = u.manager_id
+     LEFT JOIN leave_attachments att ON att.id = r.attachment_id
      LEFT JOIN LATERAL (
        SELECT actor_name, actor_role, comment, created_at FROM leave_request_history h
        WHERE h.request_id = r.id ORDER BY h.id DESC LIMIT 1
@@ -44,7 +45,7 @@ router.get('/requests.csv', handle(async (req, res) => {
       'Reason', 'Attachment', 'Submitted', 'Last Action By', 'Last Action At', 'Last Comment'],
     ...rows.map(r => [
       r.staff_no, r.name, ROLE_LABELS[r.applicant_role], r.manager_name ?? '', r.leave_type,
-      r.start_date, r.end_date, r.days, r.status, r.reason, r.attachment_name ?? '',
+      r.start_date, r.end_date, r.days, r.status, r.reason, r.att_name ?? r.attachment_name ?? '',
       formatDateTime(r.created_at),
       r.actor_name ? `${r.actor_name} (${ROLE_LABELS[r.actor_role]})` : '',
       r.last_at ? formatDateTime(r.last_at) : '',

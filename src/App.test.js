@@ -9,6 +9,7 @@ import * as requestsService from './services/requestsService';
 import * as usersService from './services/usersService';
 import * as policyService from './services/policyService';
 import * as reportsService from './services/reportsService';
+import * as attachmentsService from './services/attachmentsService';
 
 // No real server in these tests: the API calls are faked
 jest.mock('./services/authService');
@@ -16,6 +17,12 @@ jest.mock('./services/requestsService');
 jest.mock('./services/usersService');
 jest.mock('./services/policyService');
 jest.mock('./services/reportsService');
+// Keep the real file checks; fake only the calls to the server
+jest.mock('./services/attachmentsService', () => ({
+  ...jest.requireActual('./services/attachmentsService'),
+  uploadAttachment: jest.fn(),
+  downloadAttachment: jest.fn(),
+}));
 
 const JANE = { id: 3, staffNo: 'EMP003', name: 'Jane Employee', role: 'employee' };
 const ALICE = { id: 1, staffNo: 'EMP001', name: 'Alice', role: 'manager' };
@@ -123,7 +130,7 @@ test('applying for leave sends the request to the server', async () => {
 
   expect(await screen.findByText('Leave request submitted successfully')).toBeInTheDocument();
   expect(requestsService.createRequest).toHaveBeenCalledWith({
-    type: 'Annual Leave', from: '2099-03-02', to: '2099-03-03', reason: 'Family visit', attachment: null,
+    type: 'Annual Leave', from: '2099-03-02', to: '2099-03-03', reason: 'Family visit', attachmentId: null,
   });
   expect(screen.getByText('Family visit')).toBeInTheDocument(); // now in the table
 });
@@ -334,4 +341,75 @@ test('HR can download reports for a chosen year', async () => {
 
   userEvent.click(await screen.findByRole('button', { name: 'Download Leave Requests (CSV)' }));
   expect(await screen.findByRole('alert')).toHaveTextContent('Choose a valid year.');
+});
+
+async function startSickLeave() {
+  userEvent.click(await screen.findByRole('button', { name: '+ Apply for Leave' }));
+  userEvent.selectOptions(screen.getByLabelText(/^Leave Type/), 'Sick Leave');
+  fireEvent.change(screen.getByLabelText('From'), { target: { value: '2099-03-02' } });
+  fireEvent.change(screen.getByLabelText('To'), { target: { value: '2099-03-06' } }); // 5 days: needs a document
+  userEvent.type(screen.getByLabelText('Reason'), 'Flu');
+}
+
+test('a sick note is uploaded before the request is sent', async () => {
+  loggedInAs(JANE);
+  attachmentsService.uploadAttachment.mockResolvedValue({ id: 7, name: 'note.pdf', size: 1000, type: 'application/pdf' });
+  requestsService.createRequest.mockResolvedValue(janesRequest({ type: 'Sick Leave', reason: 'Flu' }));
+  renderApp('/employee');
+
+  await startSickLeave();
+  expect(screen.getByRole('alert')).toHaveTextContent('supporting document');
+
+  const file = new File(['%PDF-1.4'], 'note.pdf', { type: 'application/pdf' });
+  userEvent.upload(screen.getByLabelText(/^Attachment/), file);
+  userEvent.click(screen.getByRole('button', { name: 'Submit Request' }));
+
+  expect(await screen.findByText('Leave request submitted successfully')).toBeInTheDocument();
+  expect(attachmentsService.uploadAttachment).toHaveBeenCalledWith(file);
+  expect(requestsService.createRequest).toHaveBeenCalledWith({
+    type: 'Sick Leave', from: '2099-03-02', to: '2099-03-06', reason: 'Flu', attachmentId: 7,
+  });
+});
+
+test('if the request is refused after uploading, a retry reuses the uploaded file', async () => {
+  loggedInAs(JANE);
+  attachmentsService.uploadAttachment.mockResolvedValue({ id: 7, name: 'note.pdf', size: 1000, type: 'application/pdf' });
+  requestsService.createRequest
+    .mockRejectedValueOnce(new Error('Cannot reach the server. Is it running?'))
+    .mockResolvedValueOnce(janesRequest({ type: 'Sick Leave', reason: 'Flu' }));
+  renderApp('/employee');
+
+  await startSickLeave();
+  userEvent.upload(screen.getByLabelText(/^Attachment/), new File(['%PDF-1.4'], 'note.pdf', { type: 'application/pdf' }));
+  userEvent.click(screen.getByRole('button', { name: 'Submit Request' }));
+  expect(await screen.findByRole('alert')).toHaveTextContent('Cannot reach the server');
+
+  userEvent.click(screen.getByRole('button', { name: 'Submit Request' }));
+  expect(await screen.findByText('Leave request submitted successfully')).toBeInTheDocument();
+  expect(attachmentsService.uploadAttachment).toHaveBeenCalledTimes(1);
+});
+
+test('unsupported files are flagged before uploading', async () => {
+  loggedInAs(JANE);
+  renderApp('/employee');
+
+  await startSickLeave();
+  userEvent.upload(screen.getByLabelText(/^Attachment/), new File(['MZ'], 'virus.exe', { type: 'application/x-msdownload' }), undefined, { applyAccept: false });
+
+  expect(screen.getByRole('alert')).toHaveTextContent('Only PDF, JPEG, PNG and Word documents');
+  expect(screen.getByRole('button', { name: 'Submit Request' })).toBeDisabled();
+  expect(attachmentsService.uploadAttachment).not.toHaveBeenCalled();
+});
+
+test('reviewers can download the supporting document', async () => {
+  loggedInAs(ALICE);
+  serverHas([janesRequest({ type: 'Sick Leave', attachment: { id: 7, name: 'note.pdf', size: 2048, type: 'application/pdf' } })]);
+  attachmentsService.downloadAttachment.mockResolvedValue();
+
+  renderApp('/manager');
+  userEvent.click(await screen.findByRole('button', { name: 'Review' }));
+  expect(screen.getByText(/note\.pdf \(2 KB\)/)).toBeInTheDocument();
+  userEvent.click(screen.getByRole('button', { name: 'Download' }));
+
+  await waitFor(() => expect(attachmentsService.downloadAttachment).toHaveBeenCalledWith(1, 'note.pdf'));
 });

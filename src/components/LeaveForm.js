@@ -4,6 +4,7 @@ import { RequestsContext } from '../context/RequestsContext';
 import { AuthContext } from '../context/AuthContext';
 import { usePolicy } from '../context/PolicyContext';
 import { activeLeaveTypes, countLeaveDays, findLeaveType, getBalances, todayISO, validateLeaveRequest } from '../shared/leaveRules.js';
+import { checkFileBeforeUpload, uploadAttachment } from '../services/attachmentsService';
 import '../styles/Modal.css';
 
 // The server works out the days, the starting status and who reviews it from the
@@ -21,9 +22,15 @@ function LeaveForm({ onSubmit, onClose }) {
   });
   const [submitting, setSubmitting] = useState(false);
   const [serverError, setServerError] = useState('');
+  // The last file uploaded and its server copy, so a retry after a refusal doesn't upload it again
+  const [uploaded, setUploaded] = useState({ file: null, attachment: null });
 
   const days = countLeaveDays(formData.type, formData.from, formData.to, policy);
-  const errors = validateLeaveRequest(formData, { requests, employeeId: user?.id, policy });
+  const fileError = checkFileBeforeUpload(formData.attachment);
+  const errors = [
+    ...(fileError ? [fileError] : []),
+    ...validateLeaveRequest(formData, { requests, employeeId: user?.id, policy }),
+  ];
   const year = formData.from ? Number(formData.from.slice(0, 4)) : new Date().getFullYear();
   const balance = formData.type
     ? getBalances(requests, user?.id, year, policy).find(b => b.type === formData.type)
@@ -44,8 +51,13 @@ function LeaveForm({ onSubmit, onClose }) {
     setSubmitting(true);
     try {
       const { type, from, to, reason, attachment } = formData;
-      // Only the file's name is sent for now; uploading the file itself comes later
-      const created = await addRequest({ type, from, to, reason, attachment: attachment ? { name: attachment.name } : null });
+      // The document is uploaded first, then the request refers to it
+      let stored = null;
+      if (attachment) {
+        stored = uploaded.file === attachment ? uploaded.attachment : await uploadAttachment(attachment);
+        setUploaded({ file: attachment, attachment: stored });
+      }
+      const created = await addRequest({ type, from, to, reason, attachmentId: stored?.id ?? null });
       if (onSubmit) onSubmit(created);
     } catch (err) {
       setServerError(err.message);
@@ -88,7 +100,8 @@ function LeaveForm({ onSubmit, onClose }) {
       </label>
 
       <label>Attachment {attachmentLimit !== null && attachmentLimit !== undefined ? `(required if over ${attachmentLimit} days)` : '(optional)'}
-        <input type="file" accept=".pdf,.doc,.docx,.jpg,.png"
+        <span className="form-hint">PDF, JPEG, PNG or Word, up to 5 MB</span>
+        <input type="file" accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
           onChange={(e) => handleChange('attachment', e.target.files[0] || null)} />
       </label>
 

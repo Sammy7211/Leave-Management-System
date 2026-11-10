@@ -12,7 +12,8 @@ if (!/test/i.test(process.env.DATABASE_URL || '')) {
 }
 
 export async function resetDb() {
-  await pool.query(`TRUNCATE users, sessions, leave_requests, leave_request_history, public_holidays, leave_types
+  await pool.query(`TRUNCATE users, sessions, leave_requests, leave_request_history, public_holidays, leave_types,
+                    leave_attachments, attachment_access_log
                     RESTART IDENTITY CASCADE`);
   // The same starting leave types as migration 004
   await pool.query(`

@@ -6,6 +6,7 @@ import { requireAuth } from '../middleware/auth.js';
 import { countLeaveDays, todayISO, validateLeaveRequest } from '../../../src/shared/leaveRules.js';
 import { loadPolicy } from '../leave/policy.js';
 import { ROLE_LABELS, canView, decide, initialStatus } from '../leave/workflow.js';
+import { attachmentDisposition } from '../attachments/files.js';
 
 const router = Router();
 router.use(requireAuth);
@@ -13,6 +14,7 @@ router.use(requireAuth);
 // A request with its applicant and full history, in the shape the React app uses
 const REQUEST_SELECT = `
   SELECT r.*, u.name AS employee_name, u.staff_no, u.manager_id AS applicant_manager_id,
+    att.file_name AS att_name, att.content_type AS att_type, att.size_bytes AS att_size,
     COALESCE((
       SELECT json_agg(json_build_object(
         'status', h.status, 'actorName', h.actor_name, 'actorRole', h.actor_role,
@@ -21,7 +23,16 @@ const REQUEST_SELECT = `
       FROM leave_request_history h WHERE h.request_id = r.id
     ), '[]') AS history
   FROM leave_requests r
-  JOIN users u ON u.id = r.employee_id`;
+  JOIN users u ON u.id = r.employee_id
+  LEFT JOIN leave_attachments att ON att.id = r.attachment_id`;
+
+// The document's details (never its contents). Requests from before uploads existed
+// may have only a file name, with no file stored.
+const toApiAttachment = (row) => {
+  if (row.attachment_id) return { id: row.attachment_id, name: row.att_name, size: row.att_size, type: row.att_type };
+  if (row.attachment_name) return { id: null, name: row.attachment_name };
+  return null;
+};
 
 const toApiRequest = (row) => ({
   id: row.id,
@@ -34,7 +45,7 @@ const toApiRequest = (row) => ({
   to: row.end_date,
   days: row.days,
   reason: row.reason,
-  attachment: row.attachment_name ? { name: row.attachment_name } : null,
+  attachment: toApiAttachment(row),
   status: row.status,
   createdAt: row.created_at,
   history: row.history.map(h => ({
@@ -85,7 +96,8 @@ const createSchema = z.object({
   from: isoDate,
   to: isoDate,
   reason: z.string().trim().min(1, 'Please give a reason.').max(1000, 'The reason is too long (1000 characters maximum).'),
-  attachment: z.object({ name: z.string().trim().min(1).max(255) }).nullish(),
+  // From POST /api/attachments, uploaded just before submitting
+  attachmentId: z.number({ error: 'Invalid attachment.' }).int().positive().nullish(),
 });
 
 // POST /api/requests: apply for leave. The server works out the days and the
@@ -111,17 +123,34 @@ router.post('/', async (req, res) => {
       [applicant.id]
     );
 
+    // The document must be one this user uploaded that isn't already on another request
+    let attachment = null;
+    if (form.attachmentId) {
+      const { rows: found } = await db.query(
+        `SELECT a.id FROM leave_attachments a
+         WHERE a.id = $1 AND a.uploaded_by = $2
+           AND NOT EXISTS (SELECT 1 FROM leave_requests r WHERE r.attachment_id = a.id)
+         FOR UPDATE`,
+        [form.attachmentId, applicant.id]
+      );
+      if (!found[0]) return { errors: ['The attached file could not be found. Please attach it again.'] };
+      attachment = found[0];
+    }
+
     const policy = await loadPolicy(db);
-    const errors = validateLeaveRequest(form, { requests: existing, employeeId: applicant.id, policy, today: todayISO() });
+    const errors = validateLeaveRequest(
+      { ...form, attachment },
+      { requests: existing, employeeId: applicant.id, policy, today: todayISO() }
+    );
     if (errors.length) return { errors };
 
     const status = initialStatus(applicant.role);
     const { rows } = await db.query(
       `INSERT INTO leave_requests
-         (employee_id, applicant_role, leave_type, start_date, end_date, days, reason, attachment_name, status)
+         (employee_id, applicant_role, leave_type, start_date, end_date, days, reason, attachment_id, status)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id`,
       [applicant.id, applicant.role, form.type, form.from, form.to,
-        countLeaveDays(form.type, form.from, form.to, policy), form.reason, form.attachment?.name ?? null, status]
+        countLeaveDays(form.type, form.from, form.to, policy), form.reason, attachment?.id ?? null, status]
     );
     await addHistory(db, rows[0].id, status, applicant, 'Submitted');
     return { request: await findRequest(db, rows[0].id) };
@@ -170,6 +199,27 @@ router.post('/:id/decision', async (req, res) => {
 
   if (result.error) return res.status(result.httpStatus).json({ error: result.error });
   res.json({ request: toApiRequest(result.request) });
+});
+
+// GET /api/requests/:id/attachment: download the supporting document. Only people who
+// can see the request may, and every download is logged (sick notes are health data).
+router.get('/:id/attachment', async (req, res) => {
+  const id = Number(req.params.id);
+  const row = Number.isInteger(id) && id > 0 ? await findRequest({ query }, id) : null;
+  if (!row || !canView(req.user, toWorkflowRequest(row)) || !row.attachment_id) {
+    return res.status(404).json({ error: 'Document not found.' });
+  }
+
+  const { rows } = await query('SELECT file_name, content_type, data FROM leave_attachments WHERE id = $1', [row.attachment_id]);
+  await query('INSERT INTO attachment_access_log (attachment_id, user_id) VALUES ($1, $2)', [row.attachment_id, req.user.id]);
+
+  res.set({
+    'Content-Type': rows[0].content_type,
+    // Always download rather than open in the browser, and never cache health data
+    'Content-Disposition': attachmentDisposition(rows[0].file_name),
+    'Cache-Control': 'no-store',
+  });
+  res.send(rows[0].data);
 });
 
 export default router;
