@@ -10,8 +10,10 @@ import userRoutes from './routes/users.js';
 import policyRoutes from './routes/policy.js';
 import reportRoutes from './routes/reports.js';
 import attachmentRoutes from './routes/attachments.js';
+import config from './config.js';
 
 const app = express();
+app.set('trust proxy', config.trustProxy);
 
 app.use(helmet());
 app.use(express.json({ limit: '100kb' }));
