@@ -185,3 +185,35 @@ body.dark {
   align-items: center;
   gap: 8px;
 }
+
+.reports-panel {
+  margin-bottom: 20px;
+  padding: 16px;
+  background: #fff;
+  border: 1px solid #e3e3e3;
+  border-radius: 8px;
+}
+
+.reports-panel h3 {
+  margin: 0 0 10px;
+}
+
+.reports-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.reports-controls label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.reports-controls select {
+  padding: 8px;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+}

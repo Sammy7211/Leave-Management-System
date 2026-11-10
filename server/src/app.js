@@ -8,6 +8,7 @@ import authRoutes from './routes/auth.js';
 import requestRoutes from './routes/requests.js';
 import userRoutes from './routes/users.js';
 import policyRoutes from './routes/policy.js';
+import reportRoutes from './routes/reports.js';
 
 const app = express();
 
@@ -21,6 +22,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/requests', requestRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/policy', policyRoutes);
+app.use('/api/reports', reportRoutes);
 
 app.use('/api', (req, res) => res.status(404).json({ error: 'Not found.' }));
 

@@ -8,12 +8,14 @@ import * as authService from './services/authService';
 import * as requestsService from './services/requestsService';
 import * as usersService from './services/usersService';
 import * as policyService from './services/policyService';
+import * as reportsService from './services/reportsService';
 
 // No real server in these tests: the API calls are faked
 jest.mock('./services/authService');
 jest.mock('./services/requestsService');
 jest.mock('./services/usersService');
 jest.mock('./services/policyService');
+jest.mock('./services/reportsService');
 
 const JANE = { id: 3, staffNo: 'EMP003', name: 'Jane Employee', role: 'employee' };
 const ALICE = { id: 1, staffNo: 'EMP001', name: 'Alice', role: 'manager' };
@@ -317,4 +319,19 @@ test('admin can change a leave entitlement', async () => {
   expect(policyService.updateLeaveType).toHaveBeenCalledWith(1, {
     name: 'Annual Leave', entitlement: 24, unit: 'working', attachmentRequiredOver: null, active: true,
   });
+});
+
+test('HR can download reports for a chosen year', async () => {
+  loggedInAs({ id: 2, staffNo: 'EMP002', name: 'Bob', role: 'hr' });
+  reportsService.downloadReport.mockResolvedValueOnce().mockRejectedValueOnce(new Error('Choose a valid year.'));
+  const lastYear = new Date().getFullYear() - 1;
+
+  renderApp('/hr');
+
+  userEvent.selectOptions(await screen.findByLabelText('Year'), String(lastYear));
+  userEvent.click(screen.getByRole('button', { name: 'Download Leave Balances (CSV)' }));
+  await waitFor(() => expect(reportsService.downloadReport).toHaveBeenCalledWith('balances', lastYear));
+
+  userEvent.click(await screen.findByRole('button', { name: 'Download Leave Requests (CSV)' }));
+  expect(await screen.findByRole('alert')).toHaveTextContent('Choose a valid year.');
 });

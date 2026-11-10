@@ -11,9 +11,9 @@ import ReviewModal from '../components/ReviewModal';
 import RequestDetails from '../components/RequestDetails';
 import StaffManagement from '../components/StaffManagement';
 import LeavePolicyManagement from '../components/LeavePolicyManagement';
+import ReportsPanel from '../components/ReportsPanel';
 import { RequestsContext } from '../context/RequestsContext';
-import { usePolicy } from '../context/PolicyContext';
-import { activeLeaveTypes, getBalances, isApproved, isPending, isRejected } from '../shared/leaveRules.js';
+import { isApproved, isPending, isRejected } from '../shared/leaveRules.js';
 import '../styles/Dashboard.css';
 
 function AdminDashboard() {
@@ -21,7 +21,6 @@ function AdminDashboard() {
   const [selectedRequest, setSelectedRequest] = useState(null);
   const [viewingRequest, setViewingRequest] = useState(null);
   const { user } = useContext(AuthContext);
-  const { policy } = usePolicy();
   const [staff, setStaff] = useState([]);
   const [toastMessage, setToastMessage] = useState(null);
 
@@ -37,53 +36,6 @@ function AdminDashboard() {
     await decideRequest(selectedRequest.id, 'reject', comment);
     setToastMessage({ text: 'Request rejected successfully', type: 'danger' });
     setSelectedRequest(null);
-  };
-
-  // ✅ CSV Export
-  const handleExportCSV = () => {
-    const headers = [
-      "Employee ID",
-      "Employee Name",
-      "Role",
-      "Leave Type",
-      "From",
-      "To",
-      "Days",
-      "Reason",
-      "Status",
-      ...activeLeaveTypes(policy).map(t => `${t.name} Remaining`)
-    ];
-    const rows = requests.map(r => {
-    const emp = { id: r.staffNo || "N/A", name: r.employee || "Unknown", role: r.role || "Employee" };
-    const year = Number(r.from?.slice(0, 4)) || new Date().getFullYear();
-    const balances = getBalances(requests, r.employeeId, year, policy);
-
-
-      return [
-        emp.id,
-        emp.name,
-        emp.role || '',
-        r.type || '',
-        r.from || '',
-        r.to || '',
-        r.days ?? 0,
-        r.reason || '',
-        r.status || '',
-        ...balances.map(b => Math.max(b.remaining, 0))
-      ];
-    });
-
-    // Quote every field so commas, quotes and line breaks in reasons don't break columns
-    const escapeCSV = (value) => `"${String(value).replace(/"/g, '""')}"`;
-    const csvContent = [headers, ...rows].map(row => row.map(escapeCSV).join(",")).join("\n");
-    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.setAttribute("download", `leave_report_all_${new Date().toISOString().split('T')[0]}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
   };
 
   // ✅ Filter requests
@@ -106,10 +58,8 @@ function AdminDashboard() {
           <StatsCard title="Rejected" value={rejectedRequests.length} />
         </div>
 
-        {/* ✅ CSV Export Button */}
-        <div className="actions-bar">
-          <button className="btn secondary" onClick={handleExportCSV}>Download Report (CSV)</button>
-        </div>
+        {/* ✅ CSV reports, built by the server */}
+        <ReportsPanel />
 
         {/* ✅ Leave Requests Table */}
         <DataTable

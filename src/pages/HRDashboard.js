@@ -11,6 +11,7 @@ import Modal from '../components/Modal';
 import Toast from '../components/Toast';
 import LeaveForm from '../components/LeaveForm';   // ✅ import LeaveForm
 import LeaveBalances from '../components/LeaveBalances';
+import ReportsPanel from '../components/ReportsPanel';
 import RequestDetails from '../components/RequestDetails';
 import ReviewModal from '../components/ReviewModal';
 import '../styles/Dashboard.css';
@@ -57,6 +58,8 @@ function HRDashboard() {
           <StatsCard title="Approved Requests" value={approvedRequests.length} />
           <StatsCard title="Rejected Requests" value={rejectedRequests.length} />
         </div>
+
+        <ReportsPanel />
 
         {/* ✅ HR can also request leave */}
         <div className="actions-bar">

@@ -75,6 +75,12 @@ Never edit a migration that has already been applied. Add a new numbered file to
 | POST | `/api/policy/holidays` | admin | `{ date, name }`; recounts booked leave that hasn't finished |
 | DELETE | `/api/policy/holidays/:id` | admin | Removes a holiday; recounts booked leave that hasn't finished |
 
+| GET | `/api/reports/requests.csv?year=` | HR, admin | One row per request starting that year, with its latest decision |
+| GET | `/api/reports/balances.csv?year=` | HR, admin | Entitlement, taken, pending and remaining days per active staff member and leave type |
+
+Reports are UTF-8 CSV with a byte order mark (for Excel); cells Excel would treat as
+formulas are prefixed with `'`.
+
 Policy changes return the updated policy plus `recalculated` (how many requests' days changed);
 each recount is recorded in that request's history.
 
